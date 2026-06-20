@@ -92,6 +92,21 @@ const COLOR_NAMES = {
   "light blue": [41, 193, 215],
 };
 
+/**
+ * 6-colour fallback used when a light entity does not expose
+ * `attributes.favorite_colors` (or exposes an empty list).
+ * Keys are used as both `title` / `aria-label` and as a hint when matching
+ * against {@link COLOR_NAMES}.
+ */
+const FALLBACK_COLORS = {
+  red: [255, 0, 0],
+  green: [92, 210, 157],
+  blue: [0, 0, 255],
+  "warm white": [255, 206, 84],
+  "cool white": [173, 216, 230],
+  white: [255, 255, 255],
+};
+
 /* ------------------------------------------------------------------ */
 /*  Helper functions                                                   */
 /* ------------------------------------------------------------------ */
@@ -996,30 +1011,34 @@ class NoiseCard extends LitElement {
     return html`
       <div class="control-row">
         <ha-icon icon="mdi:brightness-6"></ha-icon>
-        <div class="slider-container">
-          <div class="slider-track">
-            <div
-              class="slider-fill"
-              style="width: ${(brightness / 255) *
-              100}%; background-color: ${lightColor};"
-            ></div>
+        <div class="light-right-column">
+          <div class="light-slider-row">
+            <div class="slider-container">
+              <div class="slider-track">
+                <div
+                  class="slider-fill"
+                  style="width: ${(brightness / 255) *
+                  100}%; background-color: ${lightColor};"
+                ></div>
+              </div>
+              <input
+                type="range"
+                class="slider-input"
+                min="1"
+                max="255"
+                .value="${brightness}"
+                @input="${this._handleBrightnessChange}"
+              />
+            </div>
+            <span class="control-value"
+              >${Math.round((brightness / 255) * 100)}%</span
+            >
           </div>
-          <input
-            type="range"
-            class="slider-input"
-            min="1"
-            max="255"
-            .value="${brightness}"
-            @input="${this._handleBrightnessChange}"
-          />
+          ${isOn || this._config.show_light_when_off
+            ? this._renderColourSwatches(light)
+            : ""}
         </div>
-        <span class="control-value"
-          >${Math.round((brightness / 255) * 100)}%</span
-        >
       </div>
-      ${isOn || this._config.show_light_when_off
-        ? this._renderColourSwatches(light)
-        : ""}
     `;
   }
 
@@ -1036,17 +1055,41 @@ class NoiseCard extends LitElement {
         ? currentRgb.join(",")
         : null;
 
+    // Pick the swatch list: prefer the device's favorite_colors, otherwise
+    // fall back to a small built-in palette so the swatch row is never empty.
+    const favorites = light?.attributes?.favorite_colors;
+    let swatches;
+    if (Array.isArray(favorites) && favorites.length > 0) {
+      swatches = favorites
+        .filter(
+          (rgb) => Array.isArray(rgb) && rgb.length === 3 && rgb.every((v) => typeof v === "number"),
+        )
+        .map((rgb, idx) => {
+          // If this exact rgb appears in COLOR_NAMES, use that friendly name;
+          // otherwise fall back to a generic "Color N" label.
+          const named = this._findColorNameByRgb(rgb);
+          const label = named || `Color ${idx + 1}`;
+          return { rgb, label };
+        });
+    }
+    if (!swatches || swatches.length === 0) {
+      swatches = Object.entries(FALLBACK_COLORS).map(([name, rgb]) => ({
+        rgb,
+        label: name,
+      }));
+    }
+
     return html`
       <div class="colour-swatches">
-        ${Object.entries(COLOR_NAMES).map(
-          ([name, rgb]) => html`
+        ${swatches.map(
+          ({ rgb, label }) => html`
             <button
               class="colour-swatch ${activeRgb === rgb.join(",")
                 ? "active"
                 : ""}"
               style="background-color: rgb(${rgb.join(",")});"
-              title="${name}"
-              aria-label="${name}"
+              title="${label}"
+              aria-label="${label}"
               @click="${() => this._handleColourSwatchTap(rgb)}"
             ></button>
           `,
@@ -1061,6 +1104,16 @@ class NoiseCard extends LitElement {
         </button>
       </div>
     `;
+  }
+
+  /** Return the COLOR_NAMES key whose rgb exactly matches, or empty string. */
+  _findColorNameByRgb(rgb) {
+    if (!Array.isArray(rgb) || rgb.length !== 3) return "";
+    const key = rgb.join(",");
+    for (const [name, value] of Object.entries(COLOR_NAMES)) {
+      if (Array.isArray(value) && value.join(",") === key) return name;
+    }
+    return "";
   }
 
   _handleColourSwatchTap(rgb) {
@@ -1136,6 +1189,12 @@ class NoiseCard extends LitElement {
 
     const buttons = this._effectiveSoundButtons();
     const currentTone = this._tone() || "";
+    // Active highlight only applies when the siren is *currently playing* —
+    // reading straight from the siren state is more accurate than
+    // remembering the last-selected tone.
+    const siren = this._sirenState();
+    const activeTone =
+      siren?.state === "on" ? siren?.attributes?.tone || null : null;
     const buttonTones = new Set(buttons.map((b) => b.tone));
     const dropdownTones = tones.filter((t) => !buttonTones.has(t));
     const stop = (e) => e.stopPropagation();
@@ -1151,7 +1210,7 @@ class NoiseCard extends LitElement {
                   ${buttons.map(
                     (btn) => html`
                       <button
-                        class="action-button ${btn.tone === currentTone
+                        class="action-button ${btn.tone === activeTone
                           ? "active"
                           : ""} ${showLabels ? "" : "icon-only"}"
                         @click="${(e) => {
@@ -1558,6 +1617,16 @@ class NoiseCard extends LitElement {
 
   _handleSoundButtonTap(tone) {
     this._vibrate();
+    const siren = this._sirenState();
+    const currentTone = siren?.attributes?.tone;
+    const isPlaying = siren?.state === "on" && currentTone != null;
+    if (isPlaying && currentTone === tone) {
+      // Tapping the currently-playing sound stops playback.
+      this.hass.callService("siren", "turn_off", {
+        entity_id: this._config.siren_entity,
+      });
+      return;
+    }
     this.hass.callService("siren", "turn_on", {
       entity_id: this._config.siren_entity,
       tone: tone,
@@ -1838,7 +1907,7 @@ class NoiseCard extends LitElement {
         margin: -1px 0;
       }
       .horizontal-layout {
-        padding: 0 8px;
+        padding: 0 16px;
         min-height: 56px;
       }
       .horizontal-layout.expanded {
@@ -1872,7 +1941,7 @@ class NoiseCard extends LitElement {
         flex-shrink: 0;
       }
       .vertical-layout {
-        padding: 0 8px;
+        padding: 0 16px;
         min-height: 120px;
         position: relative;
       }
@@ -2031,7 +2100,7 @@ class NoiseCard extends LitElement {
         border-top: 1px solid var(--divider-color);
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 12px;
         animation: slideDown var(--animation-duration, 250ms) ease-out;
         position: relative;
         z-index: 1;
@@ -2237,26 +2306,30 @@ class NoiseCard extends LitElement {
       }
       .sound-buttons {
         display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
+        gap: 8px;
       }
       .sound-buttons .action-button {
-        flex: 0 0 auto;
+        flex: 1 1 0;
+        min-width: 0;
         padding: 6px 10px;
-        height: 36px;
+        height: auto;
+        min-height: 36px;
         gap: 4px;
       }
       .sound-buttons .action-button.icon-only {
+        flex: 0 0 auto;
         width: 36px;
         padding: 0;
         justify-content: center;
       }
+      .sound-buttons .action-button.active {
+        box-shadow: 0 0 0 2px var(--primary-color);
+        background-color: rgba(var(--rgb-primary-color), 0.12);
+      }
       .sound-btn-label {
         font-size: 12px;
-        max-width: 80px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        white-space: normal;
+        line-height: 1.2;
       }
       .timer-buttons {
         flex-wrap: wrap;
@@ -2275,8 +2348,28 @@ class NoiseCard extends LitElement {
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
-        padding-top: 8px;
+        padding-top: 2px;
         padding-left: 36px;
+      }
+      /* Right-hand column of the light control: stacks the brightness
+       * slider+value row above the colour swatches so the brightness
+       * icon (align-self: center) can centre on the entire block. */
+      .light-right-column {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .light-slider-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 40px;
+      }
+      /* Make the brightness icon center vertically on the whole right
+       * column (slider row + swatches) rather than just the slider row. */
+      .control-row:has(.light-right-column) > ha-icon {
+        align-self: center;
       }
       .colour-swatch {
         width: 24px;
