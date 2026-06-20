@@ -1,14 +1,21 @@
 {
-  "name": "hatch-card",
-  "version": "1.5.3",
-  "description": "A custom Home Assistant card to control a Hatch Rest device",
+  "name": "noise-card",
+  "version": "1.0.0",
+  "description": "A Home Assistant Lovelace card for Tuya noise machines (siren + light)",
   "type": "module",
-  "main": "hatch-card.js",
+  "main": "noise-card.js",
   "scripts": {
     "build": "rollup -c"
   },
-  "author": "eyalgal",
+  "author": "Tom Grozev",
   "license": "MIT",
+  "keywords": [
+    "home-assistant",
+    "lovelace",
+    "tuya",
+    "noise-machine",
+    "hatch-card"
+  ],
   "devDependencies": {
     "rollup": "^4.56.0",
     "@rollup/plugin-node-resolve": "^16.0.3",

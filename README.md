@@ -1,369 +1,283 @@
-# 🌙 Hatch Card for Home Assistant
+# 🌙 Noise Card for Home Assistant
+
 [![GitHub Release][release_badge]][release]
 [![Downloads][downloads_badge]][release]
-[![Community Forum][forum_badge]][forum]
-[![Buy Me A Coffee][bmac_badge]][bmac]
+[![HACS][hacs_badge]][hacs]
 
-<!-- Link references -->
-[release_badge]: https://img.shields.io/github/v/release/eyalgal/hatch-card
-[release]: https://github.com/eyalgal/hatch-card/releases
-[downloads_badge]: https://img.shields.io/github/downloads/eyalgal/hatch-card/total.svg
-[forum_badge]: https://img.shields.io/badge/Community-Forum-5294E2.svg
-[forum]: https://community.home-assistant.io/t/hatch-card-the-all-in-one-card-for-your-hatch-sound-machine/913174
-[bmac_badge]: https://img.shields.io/badge/buy_me_a-coffee-yellow
-[bmac]: https://www.buymeacoffee.com/eyalgal
+[release_badge]: https://img.shields.io/github/v/release/TomGrozev/noise-machine-card
+[release]: https://github.com/TomGrozev/noise-machine-card/releases
+[downloads_badge]: https://img.shields.io/github/downloads/TomGrozev/noise-machine-card/total.svg
+[hacs_badge]: https://img.shields.io/badge/HACS-Custom-41BDF5.svg
+[hacs]: https://hacs.xyz/
 
-A sleek, modern, and highly customizable Lovelace card to control your Hatch Rest devices in Home Assistant. This card combines light and media player controls into a single, intuitive interface.
+A sleek, modern Lovelace card to control Tuya-compatible noise machines in Home Assistant. Uses the `siren` entity model (via [tuya-local](https://github.com/make-all/tuya-local)) with `available_tones`, `tone`, and `volume_level`.
 
-> This card was built for and tested with the **Hatch Rest+**. It may work with other Hatch products (like the Rest, Rest Mini, or Restore) if they are supported by the underlying Hatch integration, but functionality is not guaranteed. The card is also flexible enough to be used with other sound and light devices from different brands.
+Forked from [eyalgal/hatch-card](https://github.com/eyalgal/hatch-card).
 
 ## ✨ Features
 
-- **All-in-One Control:** Manage your device's light and sound from a single card.
-- **Sound-Only Mode:** The light entity is optional, so the card can be used as a dedicated media player controller.
-- **Sleep Timer Presets (v1.3.0+):** Start and cancel a Home Assistant `timer.*` helper from the card. Presets are available only when a timer helper is configured.
-- **Time Selector (v1.5.0+):** Set and edit a fixed time of day (wake-up, nap, bedtime) using an `input_datetime` helper, right from the card.
-- **Device-Specific Controls:** Native support for Toddler Lock, Clock Brightness, and Battery Level indicators (requires corresponding entities).
-- **Customizable Layouts & Controls:** Choose `vertical` or `horizontal` layouts and re-order controls to build your interface.
-- **Dynamic Backgrounds:** Set the card background to reflect the light's color, visually represent the volume level, or keep it standard.
-- **Full Action Support:** Supports standard Home Assistant `tap_action`, `hold_action`, and `double_tap_action` (tap is icon-only by default).
-- **Custom Icons & Photos:** Use dynamic icons that change with the sound, set a static icon, or use a photo.
-- **Easy Configuration:** Configurable through the Lovelace visual UI editor.
-- **Haptic Feedback:** Optional tactile feedback on mobile devices.
-- **Volume Slider:** Optional volume slider in expanded controls.
-- **Custom Controls Order:** Fully customize the order of expanded controls.
+- **Sound Control:** Configurable button row + dropdown picker for tones, powered by `available_tones` / `siren.turn_on`.
+- **Volume Control:** +/- buttons, optional slider, and volume presets — all via `siren.turn_on(volume_level)`.
+- **Light Control (Optional):** Brightness slider and colour-aware dynamic background for an optional `light` entity.
+- **Child Lock (Optional):** Toggle a `switch` entity directly from the card.
+- **Sleep Timer (Optional):** Preset buttons that start an HA `timer.*` helper, with live remaining-time display and a timer ring around the icon.
+- **Scenes:** Configurable scene buttons that execute siren + light presets or activate HA scene entities.
+- **Customisable Layout:** Horizontal or vertical, with an optional expand button to tuck away controls.
+- **Sound Buttons:** Auto-derives the first 6 tones as icon buttons — or supply your own `sound_buttons` array.
+- **Full Action Support:** `tap_action`, `hold_action`, `double_tap_action` on the icon.
+- **Visual Editor:** Full Lovelace UI editor with search, expansion panels, and ha-form fields.
+- **Dynamic Icons:** Icons change automatically based on the active tone.
+- **Haptic Feedback:** Optional vibration on mobile.
 
 ## ✅ Requirements
 
 - **Home Assistant:** Version 2023.4 or newer.
-- **Hatch Integration (Optional):** For Hatch devices, the [Hatch Rest Integration](https://github.com/dahlb/ha_hatch) by `dahlb` is required.
-- For other devices, you only need a `media_player` entity.
+- **A `siren` entity** that exposes `available_tones`, `tone`, and `volume_level` attributes (typical for Tuya noise machines via `tuya-local`).
 - **Timer feature (optional):** A Home Assistant `timer.*` helper entity.
 
 ## 🚀 Installation
 
-### HACS
+### HACS (Custom Repository)
 
-Hatch Card is available in [HACS](https://hacs.xyz/) (Home Assistant Community Store).
+1. Install [HACS](https://hacs.xyz/) if you haven't already.
+2. In HACS, go to **Frontend** → **⋮** → **Custom repositories**.
+3. Add `TomGrozev/noise-machine-card` as a **Lovelace** repository.
+4. Install **Noise Card** from the list.
+5. Add the resource to Lovelace (if not auto-added):
 
-Use this link to directly go to the repository in HACS:
+   ```yaml
+   url: /local/noise-card.js
+   type: module
+   ```
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=eyalgal&repository=hatch-card)
+### Manual
 
-or
+1. Copy `noise-card.js` into your Home Assistant `config/www/` folder.
+2. Refresh the browser cache (or restart Home Assistant).
+3. Add the resource to Lovelace (Configuration → Dashboards → Resources):
 
-1. Install HACS if you don't have it already
-2. Open HACS in Home Assistant
-3. Search for "Hatch Card"
-4. Click the download button
+   ```yaml
+   url: /local/noise-card.js
+   type: module
+   ```
+
+4. Add the card to a dashboard.
+
+---
 
 ## Main Configuration
 
-| Name                       | Type      | Default             | Description                                                                                    |
-| :------------------------- | :-------- | :------------------ | :--------------------------------------------------------------------------------------------- |
-| `type`                     | `string`  | **Required**        | `custom:hatch-card`                                                                            |
-| `media_player_entity`      | `string`  | **Required**        | The entity ID of your media player.                                                            |
-| `light_entity`             | `string`  | `null`              | The entity ID of your light. Optional.                                                         |
-| `name`                     | `string`  | Entity Name         | A custom name for the card.                                                                    |
-| `icon`                     | `string`  | `mdi:speaker`       | A custom icon. If not set, it uses a dynamic, sound-specific icon.                             |
-| `user_photo`               | `string`  | `null`              | A URL to a photo to use instead of an icon.                                                    |
-| `layout`                   | `string`  | `horizontal`        | Card layout. Can be `horizontal` or `vertical`.                                                |
-| `background_mode`          | `string`  | `full`              | Card background style: `full` (color fill), `volume` (fill based on volume), or `none`.        |
-| `secondary_info`           | `string`  | `Volume {volume}%`  | Custom text. Use placeholders like `{volume}`, `{sound}`, `{brightness}`. Set to `''` to hide. |
-| `controls_order`           | `array`   | `[...]`             | A list to re-order expanded controls (includes `volume_slider`).                               |
-| `show_volume_buttons`      | `boolean` | `true`              | Show the volume up/down buttons.                                                               |
-| `show_volume_slider`       | `boolean` | `false`             | Show a volume slider in the expanded controls.                                                 |
-| `show_expand_button`       | `boolean` | `false`             | If `true`, additional controls are hidden behind an expand button.                             |
-| `show_sound_control`       | `boolean` | `false`             | Show the sound-mode dropdown in the expanded view.                                             |
-| `show_brightness_control`  | `boolean` | `false`             | Show the brightness slider in the expanded view.                                               |
-| `show_brightness_when_off` | `boolean` | `false`             | Show the brightness slider even when the light is off.                                         |
-| `show_timer`               | `boolean` | `false`             | Show sleep timer presets in the expanded view (requires `timer_entity`).                       |
-| `timer_entity`             | `string`  | `null`              | Entity ID of a Home Assistant `timer.*` helper. Required to enable timer presets.              |
-| `timer_presets`            | `array`   | `[15, 30, 60, 120]` | Timer presets in minutes.                                                                      |
-| `sync_hatch_timer`         | `boolean` | `true`              | Also call Hatch timer services when supported by the integration.                              |
-| `show_scenes`              | `boolean` | `false`             | Show the scene buttons in the expanded view.                                                   |
-| `show_toddler_lock`        | `boolean` | `false`             | Show the toddler-lock toggle (requires `toddler_lock_entity`).                                 |
-| `show_clock_brightness`    | `boolean` | `false`             | Show the clock-brightness slider (requires `clock_brightness_entity`).                         |
-| `show_time`                | `boolean` | `false`             | Show a time selector for an `input_datetime` helper (requires `time_entity`).                   |
-| `time_entity`              | `string`  | `null`              | Entity ID of an `input_datetime.*` helper (time-only). Required to enable the time selector.    |
-| `time_name`                | `string`  | Entity name         | Optional label shown next to the time selector.                                                |
-| `show_battery_indicator`   | `boolean` | `false`             | Show the battery indicator (requires `battery_level_entity`).                                  |
-| `toddler_lock_entity`      | `string`  | `null`              | Entity ID for the toddler-lock switch entity.                                                  |
-| `clock_brightness_entity`  | `string`  | `null`              | Entity ID for the clock-brightness light entity.                                               |
-| `battery_level_entity`     | `string`  | `null`              | Entity ID for the battery-level sensor entity.                                                 |
-| `charging_status_entity`   | `string`  | `null`              | Entity ID for the charging-status `binary_sensor`.                                             |
-| `volume_presets`           | `array`   | `null`              | An array of volume presets (0–1) for buttons. Example: `[0.25, 0.5, 0.75]`.                     |
-| `volume_step`              | `number`  | `0.01`              | Amount to change the volume with each button press.                                            |
-| `animation_duration`       | `number`  | `250`               | Duration of animations in ms. Set to `0` to disable.                                           |
-| `haptic`                   | `boolean` | `true`              | Enable haptic feedback (vibration) on touch.                                                   |
-| `volume_click_control`     | `boolean` | `true`              | When `background_mode` is `volume`, allows setting volume by clicking the card.                |
-| `tap_action`               | `object`  | `action: toggle`    | Action to perform on icon tap.                                                                 |
-| `hold_action`              | `object`  | `action: more-info` | Action to perform on icon hold.                                                                |
-| `double_tap_action`        | `object`  | `action: none`      | Action to perform on icon double tap.                                                          |
+| Name                       | Type      | Default             | Description                                                                          |
+| :------------------------- | :-------- | :------------------ | :----------------------------------------------------------------------------------- |
+| `type`                     | `string`  | **Required**        | `custom:noise-card`                                                                  |
+| `siren_entity`             | `string`  | **Required**        | The `siren` entity that plays sounds.                                                |
+| `light_entity`             | `string`  | `null`              | Optional `light` entity.                                                             |
+| `child_lock_entity`        | `string`  | `null`              | Optional `switch` entity for child lock.                                             |
+| `timer_entity`             | `string`  | `null`              | Optional HA `timer.*` helper for sleep timer presets.                                |
+| `name`                     | `string`  | Entity Name         | A custom name for the card.                                                          |
+| `icon`                     | `string`  | `mdi:speaker`       | A custom icon (overridden by dynamic tone icons unless set).                         |
+| `user_photo`               | `string`  | `null`              | A URL to a photo to use instead of an icon.                                          |
+| `layout`                   | `string`  | `horizontal`        | Card layout: `horizontal` or `vertical`.                                             |
+| `background_mode`          | `string`  | `full`              | Background style: `full`, `volume`, or `none` (requires light entity).               |
+| `secondary_info`           | `string`  | auto                | Custom text with `{volume}`, `{sound}`, `{brightness}` placeholders. Empty = auto.   |
+| `controls_order`           | `array`   | `[...]`             | Comma-separated list to re-order expanded controls.                                  |
+| `show_volume_buttons`      | `boolean` | `true`              | Show the volume up/down buttons.                                                     |
+| `show_volume_slider`       | `boolean` | `false`             | Show a volume slider in expanded controls.                                           |
+| `show_expand_button`       | `boolean` | `false`             | Hide expanded controls behind an expand button.                                      |
+| `show_sound_control`       | `boolean` | `true`              | Show the sound picker (button row + dropdown).                                       |
+| `show_brightness_control`  | `boolean` | `false`             | Show brightness slider (requires light entity).                                      |
+| `show_brightness_when_off` | `boolean` | `false`             | Show brightness slider even when light is off.                                       |
+| `show_timer`               | `boolean` | `false`             | Show sleep timer presets (requires `timer_entity`).                                  |
+| `show_child_lock`          | `boolean` | `false`             | Show child lock toggle (requires `child_lock_entity`).                               |
+| `show_scenes`              | `boolean` | `false`             | Show scene buttons.                                                                  |
+| `volume_step`              | `number`  | `0.05`              | Amount to change the volume with each button press (0.0 – 1.0).                      |
+| `volume_presets`           | `array`   | `[]`                | Array of volume levels (0.0 – 1.0) for preset buttons. Example: `[0.25, 0.5, 0.75]`. |
+| `sound_buttons`            | `array`   | `null`              | Custom button definitions. `null` = auto-derive from `available_tones`. See below.   |
+| `timer_presets`            | `array`   | `[15, 30, 60, 120]` | Timer presets in minutes.                                                            |
+| `scenes`                   | `array`   | `[]`                | Scene definitions. See Scene Configuration below.                                    |
+| `scenes_per_row`           | `number`  | `4`                 | Number of scene buttons per row.                                                     |
+| `haptic`                   | `boolean` | `true`              | Enable haptic feedback on touch.                                                     |
+| `volume_click_control`     | `boolean` | `true`              | When `background_mode` is `volume`, click card background to set volume.             |
+| `animation_duration`       | `number`  | `250`               | Duration of animations in ms. Set to `0` to disable.                                 |
+| `tap_action`               | `object`  | `action: toggle`    | Action on icon tap.                                                                  |
+| `hold_action`              | `object`  | `action: more-info` | Action on icon hold.                                                                 |
+| `double_tap_action`        | `object`  | `action: none`      | Action on icon double-tap.                                                           |
 
 ---
 
-## Timer (v1.3.0+)
+## Sound Buttons
 
-The Hatch Card timer UI uses a Home Assistant `timer.*` helper.
+When `sound_buttons` is `null` (default), the card auto-derives the first 6 tones from the siren's `available_tones` attribute, mapping each to an icon via case-insensitive substring matching.
+
+You can override this with an explicit array:
+
+```yaml
+sound_buttons:
+  - label: Rain
+    icon: mdi:weather-rainy
+    tone: Rain
+  - label: Fan
+    icon: mdi:fan
+    tone: Fan
+  - label: White Noise
+    icon: mdi:waveform
+    tone: White Noise
+```
+
+Tones shown as buttons are **removed** from the dropdown below, so each tone appears exactly once.
+
+---
+
+## Timer
+
+The timer UI uses a Home Assistant `timer.*` helper.
 
 ### Setup
-1. Create a timer helper:
-   - Settings -> Devices & Services -> Helpers -> Create Helper -> Timer
+
+1. Create a timer helper: **Settings → Devices & Services → Helpers → Create Helper → Timer**.
 2. Add it to your card config:
 
 ```yaml
-type: custom:hatch-card
-media_player_entity: media_player.rest_plus
-light_entity: light.rest_plus
+type: custom:noise-card
+siren_entity: siren.sleep_noise_machine
+light_entity: light.sleep_noise_machine
 show_expand_button: true
 show_timer: true
-timer_entity: timer.johnny_sleep
+timer_entity: timer.sleep_timer
 timer_presets: [15, 30, 60, 120]
-sync_hatch_timer: true
 ```
+
 ### Important
-The card starts and cancels the timer. It does not execute "when the timer is up" actions inside the card.
 
-Use an automation triggered by `timer.finished` (examples below).
+The card starts and cancels the timer. It does not execute "when the timer is up" actions inside the card. Use an automation triggered by `timer.finished`.
 
-### Recommended for advanced timer UI
-If you want a richer timer UI (progress displays, multiple timers, more customization), use my Simple Timer Card:
-https://github.com/eyalgal/simple-timer-card
+### Example: turn off sound when timer finishes
 
----
-
-## Automation examples (when the timer is up)
-
-### Example: turn off light and stop sound
 ```yaml
-alias: Hatch - Sleep timer finished
+alias: Noise machine — sleep timer finished
 mode: single
 trigger:
   - platform: event
     event_type: timer.finished
     event_data:
-      entity_id: timer.johnny_sleep
+      entity_id: timer.sleep_timer
 action:
+  - service: siren.turn_off
+    target:
+      entity_id: siren.sleep_noise_machine
   - service: light.turn_off
     target:
-      entity_id: light.rest_plus
-  - service: media_player.media_stop
-    target:
-      entity_id: media_player.rest_plus
-```
-
-### Example: OK-to-wake style (sound off, light turns green)
-```yaml
-alias: Hatch - OK to wake
-mode: single
-trigger:
-  - platform: event
-    event_type: timer.finished
-    event_data:
-      entity_id: timer.johnny_nap
-action:
-  - service: media_player.media_stop
-    target:
-      entity_id: media_player.rest_plus
-  - service: light.turn_on
-    target:
-      entity_id: light.rest_plus
-    data:
-      brightness_pct: 40
-      color_name: green
-      transition: 3
-```
-
----
-
-## Time Selector (v1.5.0+)
-
-The time selector lets you set and edit a fixed time of day (for example a wake-up, nap, or bedtime time) directly from the card, using a Home Assistant `input_datetime` helper.
-
-### Setup
-1. Create an `input_datetime` helper with **time only**:
-   - Settings -> Devices & Services -> Helpers -> Create Helper -> Date/Time
-   - Enable **Time**, leave **Date** off.
-2. Add it to your card config:
-
-```yaml
-type: custom:hatch-card
-media_player_entity: media_player.rest_plus
-light_entity: light.rest_plus
-show_time: true
-time_entity: input_datetime.wake_up_time
-time_name: Wake-up Time
-```
-
-The card shows a time picker. Changing it calls `input_datetime.set_datetime` to update the helper.
-
-### Important
-The card only stores the time. It does not do anything when that time arrives.
-
-To act on the time, create an automation that triggers at the value of your `input_datetime` helper.
-
-### Example: turn the light green at the set time (if the device is playing)
-
-```yaml
-alias: Wake-up Time
-triggers:
-  - trigger: time
-    at: input_datetime.wake_up_time
-conditions:
-  - condition: state
-    entity_id: media_player.rest_plus
-    state: playing
-actions:
-  - target:
-      entity_id: light.rest_plus
-    data:
-      color_name: green
-    action: light.turn_on
-mode: single
+      entity_id: light.sleep_noise_machine
 ```
 
 ---
 
 ## Scene Configuration
 
-The `scenes` option takes a list of scene objects. Each object can define its own set of parameters.
+The `scenes` option takes a list of scene objects.
 
-| Name             | Type      | Description                                                                                      |
-| :--------------- | :-------- | :----------------------------------------------------------------------------------------------- |
-| `name`           | `string`  | **Required.** The name displayed on the scene button.                                            |
-| `icon`           | `string`  | An icon for the scene button (example: `mdi:weather-night`).                                     |
-| `entity_id`      | `string`  | The entity ID of a Home Assistant scene. If used, it overrides all other manual settings below. |
-| `transition`     | `number`  | Transition time (seconds) for the scene.                                                         |
-| `turn_off_light` | `boolean` | Set to `true` to turn the light off.                                                             |
-| `turn_off_media` | `boolean` | Set to `true` to turn the media player off.                                                      |
-| `color`          | `string`  | Set the light color by name (`'red'`) or RGB (`'255,0,0'`).                                      |
-| `brightness`     | `number`  | Set the light brightness from 1–100.                                                             |
-| `sound_mode`     | `string`  | The name of the sound to play (example: `'WhiteNoise'`).                                         |
-| `volume`         | `number`  | Set the volume from 0–100.                                                                       |
+| Name             | Type      | Description                                                           |
+| :--------------- | :-------- | :-------------------------------------------------------------------- |
+| `name`           | `string`  | **Required.** The name displayed on the scene button.                 |
+| `icon`           | `string`  | An icon for the scene button (e.g. `mdi:weather-night`).              |
+| `entity_id`      | `string`  | Entity ID of a Home Assistant scene. Overrides manual settings below. |
+| `transition`     | `number`  | Transition time (seconds).                                            |
+| `turn_off_light` | `boolean` | Set to `true` to turn the light off.                                  |
+| `turn_off_siren` | `boolean` | Set to `true` to turn the siren off.                                  |
+| `color`          | `string`  | Light color by name (`'red'`) or RGB (`'255,0,0'`).                   |
+| `brightness`     | `number`  | Light brightness 1–100.                                               |
+| `sound_mode`     | `string`  | Tone to play (maps to `siren.turn_on` with `tone`).                   |
+| `volume`         | `number`  | Volume 0–100 (mapped to 0.0–1.0).                                     |
+
+---
 
 ## Use Cases & Examples
 
-### Toddler OK-to-wake nap timer (v1.3.0+)
-
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/a1d65498-b953-4db3-aafd-b9747061c93b" />
-
-Card config:
+### Minimal Configuration
 
 ```yaml
-type: custom:hatch-card
-light_entity: light.rest_plus
-media_player_entity: media_player.rest_plus
-name: Johnny's Hatch
+type: custom:noise-card
+siren_entity: siren.sleep_noise_machine
+name: Sleep Machine
+```
+
+### With Timer and Light
+
+```yaml
+type: custom:noise-card
+siren_entity: siren.sleep_noise_machine
+light_entity: light.sleep_noise_machine
+name: Baby's Room
 show_expand_button: true
 show_timer: true
-timer_entity: timer.johnny_nap
-timer_presets: [60, 90, 120]
+timer_entity: timer.sleep_timer
+timer_presets: [15, 30, 60, 120]
+show_brightness_control: true
 ```
 
-Automation (what happens when the timer is up):
+### Full Control Center with Scenes
 
 ```yaml
-alias: Hatch - OK to wake (nap done)
-mode: single
-trigger:
-  - platform: event
-    event_type: timer.finished
-    event_data:
-      entity_id: timer.johnny_nap
-action:
-  - service: media_player.media_stop
-    target:
-      entity_id: media_player.rest_plus
-  - service: light.turn_on
-    target:
-      entity_id: light.rest_plus
-    data:
-      brightness_pct: 40
-      color_name: green
-      transition: 3
-```
-
-### Simple Vertical Sound Machine
-
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/ebfc3f2e-252a-4c75-97ac-924d93725cee" />
-
-```yaml
-type: custom:hatch-card
-light_entity: light.rest_plus
-media_player_entity: media_player.rest_plus
-layout: vertical
-name: Johnny's Hatch
-secondary_info: '{sound}'
-```
-
-### All-in-One Control Center
-
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/d9dd8f72-f6f3-4c95-ad3b-9b5896784115" />
-
-```yaml
-type: custom:hatch-card
-light_entity: light.rest_plus
-media_player_entity: media_player.rest_plus
-name: Johnny's Hatch
+type: custom:noise-card
+siren_entity: siren.sleep_noise_machine
+light_entity: light.sleep_noise_machine
+child_lock_entity: switch.sleep_noise_machine_child_lock
+name: Noise Machine
 background_mode: volume
-secondary_info: 'Sound: {sound} • Brightness: {brightness}%'
+secondary_info: "Sound: {sound} • Brightness: {brightness}%"
 show_expand_button: true
 show_brightness_control: true
 show_sound_control: true
 show_timer: true
-timer_entity: timer.johnny_sleep
+show_child_lock: true
+show_scenes: true
+timer_entity: timer.sleep_timer
 timer_presets: [15, 30, 60, 120]
 volume_presets: [0.25, 0.5, 0.75, 1.0]
-```
-
-### Minimalist Nightstand Control
-
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/2cbcd45a-8e9c-4f34-8b46-7c07b5dab466" />
-
-```yaml
-type: custom:hatch-card
-light_entity: light.rest_plus
-media_player_entity: media_player.rest_plus
-name: Johnny's Hatch
-show_expand_button: true
-show_scenes: true
-show_brightness_control: true
-show_sound_control: true
 scenes_per_row: 3
 scenes:
-  - name: Reading
-    icon: mdi:book-open-page-variant
-    brightness: 40
-    turn_off_media: true
-    color: white
   - name: Sleep
     icon: mdi:weather-night
     color: red
     brightness: 5
-    sound_mode: WhiteNoise
-    volume: 35
+    sound_mode: White Noise
+    volume: 30
+  - name: Reading
+    icon: mdi:book-open-page-variant
+    brightness: 80
+    color: white
+    turn_off_siren: true
   - name: Off
     icon: mdi:power-off
     turn_off_light: true
-    turn_off_media: true
+    turn_off_siren: true
 ```
+
+### Vertical Layout
+
+```yaml
+type: custom:noise-card
+siren_entity: siren.sleep_noise_machine
+light_entity: light.sleep_noise_machine
+layout: vertical
+name: Bedside
+secondary_info: "{sound}"
+```
+
+---
 
 ## Actions
 
 The card supports standard Home Assistant actions for `tap_action`, `hold_action`, and `double_tap_action`.
 
-Example: change the light to green on a long press:
-
 ```yaml
-type: custom:hatch-card
-light_entity: light.rest_plus
-media_player_entity: media_player.rest_plus
+type: custom:noise-card
+siren_entity: siren.sleep_noise_machine
 hold_action:
   action: call-service
   service: light.turn_on
   target:
-    entity_id: light
+    entity_id: light.sleep_noise_machine
   data:
     color_name: green
 ```
@@ -371,9 +285,3 @@ hold_action:
 ## License
 
 This project is licensed under the MIT License. See the `LICENSE` file for details.
-
-## ❤️ Support
-
-If you find this card useful and would like to support it, you can buy me a coffee:
-
-<a href="https://coff.ee/eyalgal" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
