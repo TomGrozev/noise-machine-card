@@ -2105,6 +2105,7 @@ class NoiseCard extends LitElement {
         position: relative;
         z-index: 1;
         overflow: visible;
+        min-width: 0;
       }
       .horizontal-layout.has-expand-button .expanded-controls {
         margin-top: 3px;
@@ -2218,6 +2219,7 @@ class NoiseCard extends LitElement {
         display: flex;
         gap: 8px;
         flex: 1;
+        min-width: 0;
       }
       .action-button {
         flex: 1;
@@ -2307,6 +2309,7 @@ class NoiseCard extends LitElement {
       .sound-buttons {
         display: flex;
         gap: 8px;
+        min-width: 0;
       }
       .sound-buttons .action-button {
         flex: 1 1 0;
@@ -2330,6 +2333,7 @@ class NoiseCard extends LitElement {
         font-size: 12px;
         white-space: normal;
         line-height: 1.2;
+        overflow-wrap: anywhere;
       }
       .timer-buttons {
         flex-wrap: wrap;
