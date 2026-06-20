@@ -2308,11 +2308,12 @@ class NoiseCard extends LitElement {
       }
       .sound-buttons {
         display: flex;
+        flex-wrap: wrap;
         gap: 8px;
         min-width: 0;
       }
       .sound-buttons .action-button {
-        flex: 1 1 0;
+        flex: 1 1 auto;
         min-width: 0;
         padding: 6px 10px;
         height: auto;
