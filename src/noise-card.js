@@ -242,6 +242,8 @@ class NoiseCard extends LitElement {
     this._tapTimer = null;
     this._tapCount = 0;
     this._userProvidedIcon = null;
+    this._entityRegistryEntry = null;
+    this._unsubEntityRegUpdates = null;
   }
 
   /* ---- Config ---- */
@@ -266,6 +268,7 @@ class NoiseCard extends LitElement {
       show_light_when_off: false,
       show_effects: false,
       effects: null,
+      max_light_buttons: 6,
       sound_buttons_show_labels: true,
       show_child_lock: false,
       show_timer: false,
@@ -283,7 +286,6 @@ class NoiseCard extends LitElement {
       timer_presets: [15, 30, 60, 120],
       controls_order: [
         "light",
-        "effects",
         "volume_slider",
         "volume_presets",
         "sound",
@@ -312,12 +314,14 @@ class NoiseCard extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this._startTimerUpdate();
+    this._subscribeEntityRegistryUpdates();
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this._stopTimerUpdate();
     this._clearHoldTimer();
+    this._unsubscribeEntityRegistryUpdates();
   }
 
   /* ---- Timer polling (from hatch) ---- */
@@ -332,6 +336,85 @@ class NoiseCard extends LitElement {
     if (this._timerInterval) {
       clearInterval(this._timerInterval);
       this._timerInterval = null;
+    }
+  }
+
+  /* ---- Entity registry subscription (for light favourites) ----
+   *
+   * The card needs to know when the user changes the light's
+   * `favorite_colors` via HA's entity settings UI.  `hass.entities` is a
+   * display-only subset that doesn't carry the `options` field, so we have
+   * to fetch the full entity-registry entry from the backend and watch for
+   * `entity_registry_updated` events.  We tear down the subscription in
+   * `disconnectedCallback` and rebuild it whenever the `light_entity`
+   * config field changes (handled in `updated`).
+   */
+  _subscribeEntityRegistryUpdates() {
+    if (!this.hass?.connection || !this._config?.light_entity) return;
+    if (this._unsubEntityRegUpdates) return; // already subscribed
+
+    // Initial fetch so the swatches render the right colours on mount.
+    this._fetchEntityRegistryEntry();
+
+    try {
+      this._unsubEntityRegUpdates = this.hass.connection.subscribeEvents(
+        (event) => {
+          if (event?.data?.entity_id === this._config.light_entity) {
+            this._fetchEntityRegistryEntry();
+          }
+        },
+        "entity_registry_updated",
+      );
+    } catch (_) {
+      // subscribeEvents may not be available in every HA version; we'll
+      // re-fetch on `hass` change as a fallback (see updated()).
+    }
+  }
+
+  _unsubscribeEntityRegistryUpdates() {
+    if (this._unsubEntityRegUpdates) {
+      try {
+        this._unsubEntityRegUpdates();
+      } catch (_) {}
+      this._unsubEntityRegUpdates = null;
+    }
+  }
+
+  async _fetchEntityRegistryEntry() {
+    if (!this.hass?.callWS || !this._config?.light_entity) return;
+    try {
+      const entry = await this.hass.callWS({
+        type: "config/entity_registry/get",
+        entity_id: this._config.light_entity,
+      });
+      this._entityRegistryEntry = entry || null;
+    } catch (_) {
+      this._entityRegistryEntry = null;
+    }
+  }
+
+  updated(changedProps) {
+    super.updated?.(changedProps);
+    // Re-subscribe if the configured light entity changed.
+    if (changedProps.has("_config")) {
+      const prev = changedProps.get("_config");
+      if (
+        this._config?.light_entity !== prev?.light_entity
+      ) {
+        this._unsubscribeEntityRegistryUpdates();
+        this._entityRegistryEntry = null;
+        this._subscribeEntityRegistryUpdates();
+      }
+    }
+    // Fallback: if hass has just been set and we never got the entry, try once.
+    if (
+      changedProps.has("hass") &&
+      this.hass &&
+      !this._entityRegistryEntry &&
+      this._config?.light_entity &&
+      !this._unsubEntityRegUpdates
+    ) {
+      this._subscribeEntityRegistryUpdates();
     }
   }
 
@@ -804,13 +887,6 @@ class NoiseCard extends LitElement {
           (isOn || this._config.show_light_when_off),
         render: () => this._renderLightControl(lightColor, brightness, isOn, light),
       },
-      effects: {
-        is_visible: () =>
-          hasLight &&
-          !!this._config.show_effects &&
-          (isOn || this._config.show_light_when_off),
-        render: () => this._renderLightEffects(light),
-      },
       volume_slider: {
         is_visible: () => this._config.show_volume_slider,
         render: () => this._renderVolumeSliderControl(volumeLevel, lightColor),
@@ -864,7 +940,6 @@ class NoiseCard extends LitElement {
     const hasLight = !!this._lightState();
     const controlsMap = {
       light: () => hasLight && this._config.show_light_control,
-      effects: () => hasLight && this._config.show_effects,
       volume_slider: () => this._config.show_volume_slider,
       volume_presets: () =>
         this._config.volume_presets && this._config.volume_presets.length > 0,
@@ -1019,9 +1094,15 @@ class NoiseCard extends LitElement {
   /* ---- Individual control renderers ---- */
 
   _renderLightControl(lightColor, brightness, isOn, light) {
+    const showSwatches =
+      (isOn || this._config.show_light_when_off) && !!this._config.light_entity;
     return html`
       <div class="control-row">
-        <ha-icon icon="mdi:brightness-6"></ha-icon>
+        <ha-icon
+          icon="mdi:brightness-6"
+          class="toggleable-icon"
+          @click="${this._handleLightIconTap}"
+        ></ha-icon>
         <div class="slider-container">
           <div class="slider-track">
             <div
@@ -1039,9 +1120,7 @@ class NoiseCard extends LitElement {
           />
         </div>
         <span class="control-value">${Math.round((brightness / 255) * 100)}%</span>
-        ${isOn || this._config.show_light_when_off
-          ? this._renderColourSwatches(light)
-          : ""}
+        ${showSwatches ? this._renderColourSwatches(light) : ""}
       </div>
     `;
   }
@@ -1050,7 +1129,27 @@ class NoiseCard extends LitElement {
     if (!this._config.light_entity) return html``;
 
     const swatches = this._getFavoriteColors(light);
-    if (swatches.length === 0) return html``;
+    const effects = this._getEffectsToShow(light);
+
+    // Apply max cap across both lists so a long favourites list doesn't blow
+    // out the row. If we cap swatches, still leave 1 slot for the "more
+    // colours" button (when at least one swatch is visible).
+    const maxButtons = Number.isFinite(this._config.max_light_buttons)
+      ? this._config.max_light_buttons
+      : 6;
+    const totalAvailable = swatches.length + effects.length;
+    let swatchesToShow = swatches;
+    let effectsToShow = effects;
+    if (totalAvailable > maxButtons) {
+      const swatchSlots =
+        swatches.length > 0
+          ? Math.min(swatches.length, Math.max(1, maxButtons - effects.length))
+          : 0;
+      swatchesToShow = swatches.slice(0, swatchSlots);
+      effectsToShow = effects.slice(0, maxButtons - swatchSlots);
+    }
+
+    if (swatchesToShow.length === 0 && effectsToShow.length === 0) return html``;
 
     // Active detection: for each swatch, derive its RGB form and compare
     // to the light's current rgb_color (or detect white-light state).
@@ -1064,10 +1163,11 @@ class NoiseCard extends LitElement {
       : currentRgb
         ? currentRgb.join(",")
         : null;
+    const currentEffect = light?.attributes?.effect ?? null;
 
     return html`
       <div class="colour-swatches">
-        ${swatches.map(
+        ${swatchesToShow.map(
           ({ favourite, rgb, label }) => html`
             <button
               class="colour-swatch ${activeRgb === rgb.join(",") ? "active" : ""}"
@@ -1078,14 +1178,30 @@ class NoiseCard extends LitElement {
             ></button>
           `,
         )}
-        <button
-          class="colour-swatch colour-swatch-more"
-          title="More colours"
-          aria-label="More colours"
-          @click="${this._handleColourMoreInfo}"
-        >
-          <ha-icon icon="mdi:palette"></ha-icon>
-        </button>
+        ${effectsToShow.map(
+          (effect) => html`
+            <button
+              class="effect-button ${currentEffect === effect ? "active" : ""}"
+              title="${effect}"
+              aria-label="${effect}"
+              @click="${() => this._handleEffectTap(effect)}"
+            >
+              ${effect}
+            </button>
+          `,
+        )}
+        ${swatchesToShow.length > 0
+          ? html`
+              <button
+                class="colour-swatch colour-swatch-more"
+                title="More colours"
+                aria-label="More colours"
+                @click="${this._handleColourMoreInfo}"
+              >
+                <ha-icon icon="mdi:palette"></ha-icon>
+              </button>
+            `
+          : ""}
       </div>
     `;
   }
@@ -1094,16 +1210,18 @@ class NoiseCard extends LitElement {
    * Get the list of favourite colours to show as swatches.
    * Returns an array of { favourite, rgb, label } objects.
    * Priority:
-   *   1. The light's `favorite_colors` from hass.entities[entity_id].options.light
+   *   1. The light's `favorite_colors` from the entity registry entry
+   *      (fetched via config/entity_registry/get; `hass.entities` is
+   *      display-only and does NOT carry the `options` field).
    *   2. HA's computeDefaultFavoriteColors() — colour temp + colour defaults
    *   3. FALLBACK_COLORS — a small hardcoded list
    */
   _getFavoriteColors(light) {
     if (!light) return [];
 
-    // (1) User's custom favourites from the entity registry
-    const entityId = this._config.light_entity;
-    const custom = this.hass?.entities?.[entityId]?.options?.light?.favorite_colors;
+    // (1) User's custom favourites from the entity registry entry
+    const custom =
+      this._entityRegistryEntry?.options?.light?.favorite_colors;
     if (Array.isArray(custom) && custom.length > 0) {
       const out = [];
       custom.forEach((fav, idx) => {
@@ -1128,6 +1246,38 @@ class NoiseCard extends LitElement {
       rgb,
       label: name,
     }));
+  }
+
+  /**
+   * Returns the list of effect names to render as buttons, or [].
+   * - Filters out case-insensitive "off" / "none" / empty entries.
+   * - Applies the optional config.effects whitelist (if user wants to limit).
+   * - Excludes everything if show_effects is false, the light doesn't
+   *   support effects, or there's no effect_list.
+   */
+  _getEffectsToShow(light) {
+    if (!this._config.show_effects) return [];
+    if (!this._config.light_entity || !light) return [];
+
+    // LightEntityFeature.EFFECT = 4
+    const supportedFeatures = light.attributes?.supported_features ?? 0;
+    if (!(supportedFeatures & 4)) return [];
+
+    const effectList = light.attributes?.effect_list;
+    if (!Array.isArray(effectList) || effectList.length === 0) return [];
+
+    // Strip the "off" / "none" entry and any empties
+    const cleaned = effectList.filter(
+      (e) => typeof e === "string" && e.trim() !== "" && !/^(off|none)$/i.test(e.trim()),
+    );
+
+    // Apply user-configured whitelist (if non-empty)
+    const configured = this._config.effects;
+    if (Array.isArray(configured) && configured.length > 0) {
+      const set = new Set(configured);
+      return cleaned.filter((e) => set.has(e));
+    }
+    return cleaned;
   }
 
   _labelForFavorite(fav, idx) {
@@ -1253,47 +1403,6 @@ class NoiseCard extends LitElement {
     return out;
   }
 
-  _renderLightEffects(light) {
-    if (!this._config.show_effects) return html``;
-    if (!this._config.light_entity) return html``;
-    if (!light) return html``;
-
-    // LightEntityFeature.EFFECT = 4
-    const supportedFeatures = light.attributes?.supported_features ?? 0;
-    if (!(supportedFeatures & 4)) return html``;
-
-    const effectList = light.attributes?.effect_list;
-    if (!Array.isArray(effectList) || effectList.length === 0) return html``;
-
-    // Apply optional user-configured filter
-    const configured = this._config.effects;
-    const list = Array.isArray(configured) && configured.length > 0
-      ? effectList.filter((e) => configured.includes(e))
-      : effectList;
-    if (list.length === 0) return html``;
-
-    const currentEffect = light.attributes?.effect ?? null;
-
-    return html`
-      <div class="control-row">
-        <ha-icon icon="mdi:led-outline"></ha-icon>
-        <div class="effect-buttons">
-          ${list.map(
-            (effect) => html`
-              <button
-                class="effect-button ${currentEffect === effect ? "active" : ""}"
-                title="${effect}"
-                @click="${() => this._handleEffectTap(effect)}"
-              >
-                ${effect}
-              </button>
-            `,
-          )}
-        </div>
-      </div>
-    `;
-  }
-
   _handleEffectTap(effect) {
     this._vibrate();
     if (!this._config.light_entity) return;
@@ -1326,6 +1435,24 @@ class NoiseCard extends LitElement {
     this._vibrate();
     if (!this._config.light_entity) return;
     this._showMoreInfo();
+  }
+
+  _handleLightIconTap(e) {
+    e.stopPropagation();
+    this._vibrate();
+    if (!this._config.light_entity) return;
+    this.hass.callService("light", "toggle", {
+      entity_id: this._config.light_entity,
+    });
+  }
+
+  _handleSoundIconTap(e) {
+    e.stopPropagation();
+    this._vibrate();
+    if (!this._config.siren_entity) return;
+    this.hass.callService("siren", "toggle", {
+      entity_id: this._config.siren_entity,
+    });
   }
 
   _renderVolumeSliderControl(volumeLevel, lightColor) {
@@ -1399,7 +1526,11 @@ class NoiseCard extends LitElement {
 
     return html`
       <div class="control-row sound-control">
-        <ha-icon icon="mdi:music-note"></ha-icon>
+        <ha-icon
+          icon="mdi:music-note"
+          class="toggleable-icon"
+          @click="${this._handleSoundIconTap}"
+        ></ha-icon>
         <div class="sound-control-wrapper">
           ${buttons.length > 0
             ? html`
@@ -2016,9 +2147,6 @@ class NoiseCard extends LitElement {
             !!c.show_light_control &&
             (lightOn || !!c.show_light_when_off);
           break;
-        case "effects":
-          enabled = hasLight && !!c.show_effects;
-          break;
         case "volume_slider":
           enabled = !!c.show_volume_slider;
           break;
@@ -2359,6 +2487,13 @@ class NoiseCard extends LitElement {
         color: var(--secondary-text-color);
         width: 24px;
         flex-shrink: 0;
+      }
+      .control-row .toggleable-icon {
+        cursor: pointer;
+        transition: color var(--animation-duration, 250ms) ease-out;
+      }
+      .control-row .toggleable-icon:hover {
+        color: var(--primary-color);
       }
       .control-value {
         font-size: 0.875rem;
@@ -2981,6 +3116,16 @@ class NoiseCardEditor extends LitElement {
           .map((v) => v.trim())
           .filter((v) => v);
         if (value.length === 0) value = undefined;
+      } else if (key === "effects") {
+        value = target.value
+          .split(",")
+          .map((v) => v.trim())
+          .filter((v) => v);
+        if (value.length === 0) value = null;
+      } else if (key === "max_light_buttons") {
+        const numValue = parseInt(target.value, 10);
+        value =
+          !isNaN(numValue) && numValue >= 1 && numValue <= 20 ? numValue : 6;
       } else {
         value = target.value;
       }
@@ -3006,9 +3151,10 @@ class NoiseCardEditor extends LitElement {
         secondary_info: null,
         timer_presets: [15, 30, 60, 120],
         scenes_per_row: 4,
+        max_light_buttons: 6,
+        effects: null,
         controls_order: [
           "light",
-          "effects",
           "volume_slider",
           "volume_presets",
           "sound",
@@ -3400,7 +3546,6 @@ class NoiseCardEditor extends LitElement {
         value: (
           this._config?.controls_order || [
             "light",
-            "effects",
             "volume_slider",
             "volume_presets",
             "sound",
@@ -3493,6 +3638,25 @@ class NoiseCardEditor extends LitElement {
                   </div>
                 </div></label
               >
+              ${this._tf({
+                id: "max_light_buttons",
+                label: "Max Light Buttons",
+                type: "number",
+                min: "1",
+                max: "20",
+                step: "1",
+                value: this._config?.max_light_buttons ?? 6,
+                helper:
+                  "Cap on the number of swatches + effect pills in the light row",
+              })}
+              ${this._tf({
+                id: "effects",
+                label: "Effects to Show",
+                value: (this._config?.effects || []).join(", "),
+                helper:
+                  "Comma-separated list to limit which light effects appear. Leave empty to show all.",
+                placeholder: "e.g. rainbow, chase, fireworks",
+              })}
             `
           : ""}
         <label class="switch-wrapper"
