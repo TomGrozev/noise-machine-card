@@ -2689,6 +2689,13 @@ class NoiseCard extends LitElement {
         gap: 6px;
         align-items: center;
       }
+      @media (max-width: 500px) {
+        .colour-swatches {
+          flex-basis: 100%;
+          margin-left: 36px;
+          margin-top: 8px;
+        }
+      }
       .effect-buttons {
         display: flex;
         flex-wrap: wrap;
