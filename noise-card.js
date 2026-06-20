@@ -261,6 +261,8 @@ class NoiseCard extends LitElement {
       show_sound_control: true,
       show_light_control: false,
       show_light_when_off: false,
+      show_effects: false,
+      effects: null,
       sound_buttons_show_labels: true,
       show_child_lock: false,
       show_timer: false,
@@ -278,6 +280,7 @@ class NoiseCard extends LitElement {
       timer_presets: [15, 30, 60, 120],
       controls_order: [
         "light",
+        "effects",
         "volume_slider",
         "volume_presets",
         "sound",
@@ -798,6 +801,13 @@ class NoiseCard extends LitElement {
           (isOn || this._config.show_light_when_off),
         render: () => this._renderLightControl(lightColor, brightness, isOn, light),
       },
+      effects: {
+        is_visible: () =>
+          hasLight &&
+          !!this._config.show_effects &&
+          (isOn || this._config.show_light_when_off),
+        render: () => this._renderLightEffects(light),
+      },
       volume_slider: {
         is_visible: () => this._config.show_volume_slider,
         render: () => this._renderVolumeSliderControl(volumeLevel, lightColor),
@@ -851,6 +861,7 @@ class NoiseCard extends LitElement {
     const hasLight = !!this._lightState();
     const controlsMap = {
       light: () => hasLight && this._config.show_light_control,
+      effects: () => hasLight && this._config.show_effects,
       volume_slider: () => this._config.show_volume_slider,
       volume_presets: () =>
         this._config.volume_presets && this._config.volume_presets.length > 0,
@@ -1008,39 +1019,38 @@ class NoiseCard extends LitElement {
     return html`
       <div class="control-row">
         <ha-icon icon="mdi:brightness-6"></ha-icon>
-        <div class="light-right-column">
-          <div class="light-slider-row">
-            <div class="slider-container">
-              <div class="slider-track">
-                <div
-                  class="slider-fill"
-                  style="width: ${(brightness / 255) *
-                  100}%; background-color: ${lightColor};"
-                ></div>
-              </div>
-              <input
-                type="range"
-                class="slider-input"
-                min="1"
-                max="255"
-                .value="${brightness}"
-                @input="${this._handleBrightnessChange}"
-              />
-            </div>
-            <span class="control-value"
-              >${Math.round((brightness / 255) * 100)}%</span
-            >
+        <div class="slider-container">
+          <div class="slider-track">
+            <div
+              class="slider-fill"
+              style="width: ${(brightness / 255) * 100}%; background-color: ${lightColor};"
+            ></div>
           </div>
-          ${isOn || this._config.show_light_when_off
-            ? this._renderColourSwatches(light)
-            : ""}
+          <input
+            type="range"
+            class="slider-input"
+            min="1"
+            max="255"
+            .value="${brightness}"
+            @input="${this._handleBrightnessChange}"
+          />
         </div>
+        <span class="control-value">${Math.round((brightness / 255) * 100)}%</span>
+        ${isOn || this._config.show_light_when_off
+          ? this._renderColourSwatches(light)
+          : ""}
       </div>
     `;
   }
 
   _renderColourSwatches(light) {
     if (!this._config.light_entity) return html``;
+
+    const swatches = this._getFavoriteColors(light);
+    if (swatches.length === 0) return html``;
+
+    // Active detection: for each swatch, derive its RGB form and compare
+    // to the light's current rgb_color (or detect white-light state).
     const currentRgb = light?.attributes?.rgb_color;
     const isWhiteLight =
       currentRgb &&
@@ -1052,42 +1062,16 @@ class NoiseCard extends LitElement {
         ? currentRgb.join(",")
         : null;
 
-    // Pick the swatch list: prefer the device's favorite_colors, otherwise
-    // fall back to a small built-in palette so the swatch row is never empty.
-    const favorites = light?.attributes?.favorite_colors;
-    let swatches;
-    if (Array.isArray(favorites) && favorites.length > 0) {
-      swatches = favorites
-        .filter(
-          (rgb) => Array.isArray(rgb) && rgb.length === 3 && rgb.every((v) => typeof v === "number"),
-        )
-        .map((rgb, idx) => {
-          // If this exact rgb appears in COLOR_NAMES, use that friendly name;
-          // otherwise fall back to a generic "Color N" label.
-          const named = this._findColorNameByRgb(rgb);
-          const label = named || `Color ${idx + 1}`;
-          return { rgb, label };
-        });
-    }
-    if (!swatches || swatches.length === 0) {
-      swatches = Object.entries(FALLBACK_COLORS).map(([name, rgb]) => ({
-        rgb,
-        label: name,
-      }));
-    }
-
     return html`
       <div class="colour-swatches">
         ${swatches.map(
-          ({ rgb, label }) => html`
+          ({ favourite, rgb, label }) => html`
             <button
-              class="colour-swatch ${activeRgb === rgb.join(",")
-                ? "active"
-                : ""}"
+              class="colour-swatch ${activeRgb === rgb.join(",") ? "active" : ""}"
               style="background-color: rgb(${rgb.join(",")});"
               title="${label}"
               aria-label="${label}"
-              @click="${() => this._handleColourSwatchTap(rgb)}"
+              @click="${() => this._handleColourSwatchTap(favourite)}"
             ></button>
           `,
         )}
@@ -1103,6 +1087,219 @@ class NoiseCard extends LitElement {
     `;
   }
 
+  /**
+   * Get the list of favourite colours to show as swatches.
+   * Returns an array of { favourite, rgb, label } objects.
+   * Priority:
+   *   1. The light's `favorite_colors` from hass.entities[entity_id].options.light
+   *   2. HA's computeDefaultFavoriteColors() — colour temp + colour defaults
+   *   3. FALLBACK_COLORS — a small hardcoded list
+   */
+  _getFavoriteColors(light) {
+    if (!light) return [];
+
+    // (1) User's custom favourites from the entity registry
+    const entityId = this._config.light_entity;
+    const custom = this.hass?.entities?.[entityId]?.options?.light?.favorite_colors;
+    if (Array.isArray(custom) && custom.length > 0) {
+      const out = [];
+      custom.forEach((fav, idx) => {
+        const rgb = this._lightColorToRgb(fav);
+        if (!rgb) return;
+        out.push({
+          favourite: fav,
+          rgb,
+          label: this._labelForFavorite(fav, idx),
+        });
+      });
+      if (out.length > 0) return out;
+    }
+
+    // (2) HA defaults: colour temp (4 kelvin) + colour (4 hardcoded rgb)
+    const defaults = this._computeDefaultFavoriteColors(light);
+    if (defaults.length > 0) return defaults;
+
+    // (3) Hardcoded fallback (6 colours)
+    return Object.entries(FALLBACK_COLORS).map(([name, rgb]) => ({
+      favourite: { rgb_color: rgb },
+      rgb,
+      label: name,
+    }));
+  }
+
+  _labelForFavorite(fav, idx) {
+    if (fav.rgb_color) return this._findColorNameByRgb(fav.rgb_color) || `Color ${idx + 1}`;
+    if (fav.hs_color) return `Color ${idx + 1}`;
+    if (typeof fav.color_temp_kelvin === "number") return `${fav.color_temp_kelvin}K`;
+    if (fav.rgbw_color) return `Color ${idx + 1}`;
+    if (fav.rgbww_color) return `Color ${idx + 1}`;
+    return `Color ${idx + 1}`;
+  }
+
+  /**
+   * Convert a LightColor ({ rgb_color | hs_color | color_temp_kelvin | rgbw | rgbww })
+   * to a plain [r, g, b] array for the swatch background fill.
+   * Returns null if the shape isn't recognised or can't be converted.
+   */
+  _lightColorToRgb(fav) {
+    if (!fav || typeof fav !== "object") return null;
+
+    if (Array.isArray(fav.rgb_color) && fav.rgb_color.length >= 3) {
+      return [fav.rgb_color[0], fav.rgb_color[1], fav.rgb_color[2]];
+    }
+    if (Array.isArray(fav.rgbw_color) && fav.rgbw_color.length >= 3) {
+      return [fav.rgbw_color[0], fav.rgbw_color[1], fav.rgbw_color[2]];
+    }
+    if (Array.isArray(fav.rgbww_color) && fav.rgbww_color.length >= 3) {
+      return [fav.rgbww_color[0], fav.rgbww_color[1], fav.rgbww_color[2]];
+    }
+    if (Array.isArray(fav.hs_color) && fav.hs_color.length === 2) {
+      return this._hsToRgb(fav.hs_color[0], fav.hs_color[1]);
+    }
+    if (typeof fav.color_temp_kelvin === "number") {
+      return this._kelvinToRgb(fav.color_temp_kelvin);
+    }
+    return null;
+  }
+
+  _hsToRgb(h, s) {
+    // h: 0-360, s: 0-100
+    const sNorm = s / 100;
+    const c = (1 - Math.abs(2 * 0.5 - 1)) * sNorm;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = 0.5 - c / 2;
+    let r1, g1, b1;
+    if (h < 60) [r1, g1, b1] = [c, x, 0];
+    else if (h < 120) [r1, g1, b1] = [x, c, 0];
+    else if (h < 180) [r1, g1, b1] = [0, c, x];
+    else if (h < 240) [r1, g1, b1] = [0, x, c];
+    else if (h < 300) [r1, g1, b1] = [x, 0, c];
+    else [r1, g1, b1] = [c, 0, x];
+    return [
+      Math.round((r1 + m) * 255),
+      Math.round((g1 + m) * 255),
+      Math.round((b1 + m) * 255),
+    ];
+  }
+
+  _kelvinToRgb(kelvin) {
+    // Standard Tanner Helland approximation, clamped to 0-255.
+    const temp = kelvin / 100;
+    let r, g, b;
+
+    if (temp <= 66) {
+      r = 255;
+      g = 99.4708025861 * Math.log(temp) - 161.1195681661;
+      if (temp <= 19) b = 0;
+      else b = 138.5177312231 * Math.log(temp - 10) - 305.0447927307;
+    } else {
+      r = 329.698727446 * Math.pow(temp - 60, -0.1332047592);
+      g = 288.1221695283 * Math.pow(temp - 60, -0.0755148492);
+      b = 255;
+    }
+    return [
+      Math.max(0, Math.min(255, Math.round(r))),
+      Math.max(0, Math.min(255, Math.round(g))),
+      Math.max(0, Math.min(255, Math.round(b))),
+    ];
+  }
+
+  /**
+   * Replicate Home Assistant's computeDefaultFavoriteColors() for the case
+   * where the user hasn't set custom favourites on the light entity.
+   * Returns an array of { favourite, rgb, label }.
+   */
+  _computeDefaultFavoriteColors(light) {
+    const supportedModes = light?.attributes?.supported_color_modes || [];
+    const supportsColorTemp = supportedModes.includes("color_temp");
+    const supportsColor = supportedModes.some((m) =>
+      ["hs", "xy", "rgb", "rgbw", "rgbww"].includes(m),
+    );
+
+    const minK = light?.attributes?.min_color_temp_kelvin;
+    const maxK = light?.attributes?.max_color_temp_kelvin;
+    const out = [];
+
+    if (supportsColorTemp && Number.isFinite(minK) && Number.isFinite(maxK) && maxK > minK) {
+      for (let i = 1; i <= 4; i++) {
+        const k = Math.round(minK + ((maxK - minK) * i) / 5);
+        out.push({
+          favourite: { color_temp_kelvin: k },
+          rgb: this._kelvinToRgb(k),
+          label: `${k}K`,
+        });
+      }
+    }
+
+    if (supportsColor) {
+      const defaults = [
+        [127, 172, 255],
+        [215, 150, 255],
+        [255, 158, 243],
+        [255, 110, 84],
+      ];
+      for (const rgb of defaults) {
+        out.push({
+          favourite: { rgb_color: rgb },
+          rgb,
+          label: this._findColorNameByRgb(rgb) || "Color",
+        });
+      }
+    }
+
+    return out;
+  }
+
+  _renderLightEffects(light) {
+    if (!this._config.show_effects) return html``;
+    if (!this._config.light_entity) return html``;
+    if (!light) return html``;
+
+    // LightEntityFeature.EFFECT = 4
+    const supportedFeatures = light.attributes?.supported_features ?? 0;
+    if (!(supportedFeatures & 4)) return html``;
+
+    const effectList = light.attributes?.effect_list;
+    if (!Array.isArray(effectList) || effectList.length === 0) return html``;
+
+    // Apply optional user-configured filter
+    const configured = this._config.effects;
+    const list = Array.isArray(configured) && configured.length > 0
+      ? effectList.filter((e) => configured.includes(e))
+      : effectList;
+    if (list.length === 0) return html``;
+
+    const currentEffect = light.attributes?.effect ?? null;
+
+    return html`
+      <div class="control-row">
+        <ha-icon icon="mdi:led-outline"></ha-icon>
+        <div class="effect-buttons">
+          ${list.map(
+            (effect) => html`
+              <button
+                class="effect-button ${currentEffect === effect ? "active" : ""}"
+                title="${effect}"
+                @click="${() => this._handleEffectTap(effect)}"
+              >
+                ${effect}
+              </button>
+            `,
+          )}
+        </div>
+      </div>
+    `;
+  }
+
+  _handleEffectTap(effect) {
+    this._vibrate();
+    if (!this._config.light_entity) return;
+    this.hass.callService("light", "turn_on", {
+      entity_id: this._config.light_entity,
+      effect,
+    });
+  }
+
   /** Return the COLOR_NAMES key whose rgb exactly matches, or empty string. */
   _findColorNameByRgb(rgb) {
     if (!Array.isArray(rgb) || rgb.length !== 3) return "";
@@ -1113,12 +1310,12 @@ class NoiseCard extends LitElement {
     return "";
   }
 
-  _handleColourSwatchTap(rgb) {
+  _handleColourSwatchTap(favourite) {
     this._vibrate();
     if (!this._config.light_entity) return;
     this.hass.callService("light", "turn_on", {
       entity_id: this._config.light_entity,
-      rgb_color: rgb,
+      ...favourite,
     });
   }
 
@@ -1816,6 +2013,9 @@ class NoiseCard extends LitElement {
             !!c.show_light_control &&
             (lightOn || !!c.show_light_when_off);
           break;
+        case "effects":
+          enabled = hasLight && !!c.show_effects;
+          break;
         case "volume_slider":
           enabled = !!c.show_volume_slider;
           break;
@@ -2097,7 +2297,7 @@ class NoiseCard extends LitElement {
         border-top: 1px solid var(--divider-color);
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 16px;
         animation: slideDown var(--animation-duration, 250ms) ease-out;
         position: relative;
         z-index: 1;
@@ -2350,33 +2550,44 @@ class NoiseCard extends LitElement {
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
-        padding-top: 2px;
-        padding-left: 36px;
-      }
-      /* Right-hand column of the light control: stacks the brightness
-       * slider+value row above the colour swatches so the brightness
-       * icon (align-self: center) can centre on the entire block. */
-      .light-right-column {
-        flex: 1;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-      }
-      .light-slider-row {
-        display: flex;
         align-items: center;
-        gap: 12px;
-        min-height: 40px;
       }
-      /* Make the brightness icon center vertically on the whole right
-       * column (slider row + swatches) rather than just the slider row. */
-      .control-row:has(.light-right-column) > ha-icon {
-        align-self: center;
+      .effect-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+      }
+      .effect-button {
+        min-width: 36px;
+        height: 28px;
+        border-radius: 50px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        background-color: rgba(var(--rgb-primary-text-color), 0.05);
+        color: var(--primary-text-color);
+        font-size: 12px;
+        padding: 0 12px;
+        cursor: pointer;
+        transition:
+          transform var(--animation-duration, 250ms) ease-out,
+          box-shadow var(--animation-duration, 250ms) ease-out,
+          background-color var(--animation-duration, 250ms) ease-out;
+      }
+      .effect-button:hover {
+        background-color: rgba(var(--rgb-primary-color), 0.12);
+        transform: scale(1.04);
+      }
+      .effect-button:active {
+        transform: scale(0.96);
+      }
+      .effect-button.active {
+        box-shadow: 0 0 0 2px var(--primary-color);
+        background-color: rgba(var(--rgb-primary-color), 0.18);
       }
       .colour-swatch {
         width: 24px;
         height: 24px;
-        border-radius: 6px;
+        border-radius: 50%;
         border: 1px solid rgba(0, 0, 0, 0.1);
         cursor: pointer;
         position: relative;
@@ -2414,6 +2625,7 @@ class NoiseCard extends LitElement {
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        border-radius: 50%;
       }
       .colour-swatch-more ha-icon {
         --mdc-icon-size: 16px;
@@ -2781,6 +2993,7 @@ class NoiseCardEditor extends LitElement {
         show_scenes: false,
         show_expand_button: false,
         show_light_when_off: false,
+        show_effects: false,
         show_child_lock: false,
         sound_buttons_show_labels: true,
         haptic: true,
@@ -2792,6 +3005,7 @@ class NoiseCardEditor extends LitElement {
         scenes_per_row: 4,
         controls_order: [
           "light",
+          "effects",
           "volume_slider",
           "volume_presets",
           "sound",
@@ -3183,6 +3397,7 @@ class NoiseCardEditor extends LitElement {
         value: (
           this._config?.controls_order || [
             "light",
+            "effects",
             "volume_slider",
             "volume_presets",
             "sound",
@@ -3260,6 +3475,19 @@ class NoiseCardEditor extends LitElement {
                 ></ha-switch>
                 <div class="switch-label">
                   <span>Show Light When Off</span>
+                </div></label
+              >
+              <label class="switch-wrapper"
+                ><ha-switch
+                  id="show_effects"
+                  .checked="${this._config?.show_effects === true}"
+                  @change="${this._valueChanged}"
+                ></ha-switch>
+                <div class="switch-label">
+                  <span>Show Light Effects</span>
+                  <div class="switch-description">
+                    Buttons to switch between the light's animations
+                  </div>
                 </div></label
               >
             `
