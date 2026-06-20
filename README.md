@@ -14,16 +14,24 @@ A sleek, modern Lovelace card to control Tuya-compatible noise machines in Home 
 
 Forked from [eyalgal/hatch-card](https://github.com/eyalgal/hatch-card).
 
+> ⚠️ **BREAKING CHANGES (unreleased):**
+> - `child_lock_entity` must now be a `lock.*` entity (was `switch.*`); the card calls `lock.lock` / `lock.unlock` based on the current state.
+> - The `controls_order` slot key `brightness` has been renamed to `light`.
+> - `show_brightness_control` is now `show_light_control`.
+> - `show_brightness_when_off` is now `show_light_when_off`.
+>
+> See the "Light Control", "Child Lock", and "Sound Buttons" sections below for details.
+
 ## ✨ Features
 
-- **Sound Control:** Configurable button row + dropdown picker for tones, powered by `available_tones` / `siren.turn_on`.
+- **Sound Control:** Configurable button row + dropdown picker for tones, powered by `available_tones` / `siren.turn_on`. Optional icon-only mode.
 - **Volume Control:** +/- buttons, optional slider, and volume presets — all via `siren.turn_on(volume_level)`.
-- **Light Control (Optional):** Brightness slider and colour-aware dynamic background for an optional `light` entity.
-- **Child Lock (Optional):** Toggle a `switch` entity directly from the card.
+- **Light Control (Optional):** Brightness slider, colour swatch row (one tap sets the light colour), palette-icon "more colours" button, and colour-aware dynamic background for an optional `light` entity.
+- **Child Lock (Optional):** Toggle a `lock` entity directly from the card.
 - **Sleep Timer (Optional):** Preset buttons that start an HA `timer.*` helper, with live remaining-time display and a timer ring around the icon.
 - **Scenes:** Configurable scene buttons that execute siren + light presets or activate HA scene entities.
 - **Customisable Layout:** Horizontal or vertical, with an optional expand button to tuck away controls.
-- **Sound Buttons:** Auto-derives the first 6 tones as icon buttons — or supply your own `sound_buttons` array.
+- **Sound Buttons:** Auto-derives the first 6 tones as icon buttons — or supply your own `sound_buttons` array, edited in the GUI.
 - **Full Action Support:** `tap_action`, `hold_action`, `double_tap_action` on the icon.
 - **Visual Editor:** Full Lovelace UI editor with search, expansion panels, and ha-form fields.
 - **Dynamic Icons:** Icons change automatically based on the active tone.
@@ -72,7 +80,7 @@ Forked from [eyalgal/hatch-card](https://github.com/eyalgal/hatch-card).
 | `type`                     | `string`  | **Required**        | `custom:noise-card`                                                                  |
 | `siren_entity`             | `string`  | **Required**        | The `siren` entity that plays sounds.                                                |
 | `light_entity`             | `string`  | `null`              | Optional `light` entity.                                                             |
-| `child_lock_entity`        | `string`  | `null`              | Optional `switch` entity for child lock.                                             |
+| `child_lock_entity`        | `string`  | `null`              | Optional `lock` entity for child lock. The card calls `lock.lock` / `lock.unlock`.   |
 | `timer_entity`             | `string`  | `null`              | Optional HA `timer.*` helper for sleep timer presets.                                |
 | `name`                     | `string`  | Entity Name         | A custom name for the card.                                                          |
 | `icon`                     | `string`  | `mdi:speaker`       | A custom icon (overridden by dynamic tone icons unless set).                         |
@@ -80,19 +88,20 @@ Forked from [eyalgal/hatch-card](https://github.com/eyalgal/hatch-card).
 | `layout`                   | `string`  | `horizontal`        | Card layout: `horizontal` or `vertical`.                                             |
 | `background_mode`          | `string`  | `full`              | Background style: `full`, `volume`, or `none` (requires light entity).               |
 | `secondary_info`           | `string`  | auto                | Custom text with `{volume}`, `{sound}`, `{brightness}` placeholders. Empty = auto.   |
-| `controls_order`           | `array`   | `[...]`             | Comma-separated list to re-order expanded controls.                                  |
+| `controls_order`           | `array`   | `[...]`             | Comma-separated list to re-order expanded controls. See below.                       |
 | `show_volume_buttons`      | `boolean` | `true`              | Show the volume up/down buttons.                                                     |
 | `show_volume_slider`       | `boolean` | `false`             | Show a volume slider in expanded controls.                                           |
 | `show_expand_button`       | `boolean` | `false`             | Hide expanded controls behind an expand button.                                      |
 | `show_sound_control`       | `boolean` | `true`              | Show the sound picker (button row + dropdown).                                       |
-| `show_brightness_control`  | `boolean` | `false`             | Show brightness slider (requires light entity).                                      |
-| `show_brightness_when_off` | `boolean` | `false`             | Show brightness slider even when light is off.                                       |
+| `show_light_control`       | `boolean` | `false`             | Show the light control row — brightness slider + colour swatches (requires light).   |
+| `show_light_when_off`      | `boolean` | `false`             | Show the light control row even when the light is off.                               |
 | `show_timer`               | `boolean` | `false`             | Show sleep timer presets (requires `timer_entity`).                                  |
 | `show_child_lock`          | `boolean` | `false`             | Show child lock toggle (requires `child_lock_entity`).                               |
 | `show_scenes`              | `boolean` | `false`             | Show scene buttons.                                                                  |
 | `volume_step`              | `number`  | `0.05`              | Amount to change the volume with each button press (0.0 – 1.0).                      |
 | `volume_presets`           | `array`   | `[]`                | Array of volume levels (0.0 – 1.0) for preset buttons. Example: `[0.25, 0.5, 0.75]`. |
 | `sound_buttons`            | `array`   | `null`              | Custom button definitions. `null` = auto-derive from `available_tones`. See below.   |
+| `sound_buttons_show_labels` | `boolean` | `true`             | When `false`, sound buttons render as icon-only (36×36 squares, no label text).      |
 | `timer_presets`            | `array`   | `[15, 30, 60, 120]` | Timer presets in minutes.                                                            |
 | `scenes`                   | `array`   | `[]`                | Scene definitions. See Scene Configuration below.                                    |
 | `scenes_per_row`           | `number`  | `4`                 | Number of scene buttons per row.                                                     |
@@ -125,6 +134,87 @@ sound_buttons:
 ```
 
 Tones shown as buttons are **removed** from the dropdown below, so each tone appears exactly once.
+
+### GUI editor
+
+The card's Lovelace editor has a dedicated **Sound Buttons** panel — you can add, edit, reorder, and delete buttons (tone, icon, label) without hand-editing JSON. A "Reset to auto-derive" button restores the runtime default.
+
+### Icon-only mode
+
+Set `sound_buttons_show_labels: false` to render each sound button as a 36×36 icon-only square (label text hidden). Defaults to `true` (label visible).
+
+```yaml
+sound_buttons_show_labels: false
+```
+
+---
+
+## Light Control
+
+Set `show_light_control: true` (and configure `light_entity`) to add a combined light control row to the expanded controls. The row includes:
+
+- A **brightness slider** (1–255, with a percentage readout) that drives `light.turn_on` with `brightness`.
+- A **colour swatch row** with one button per colour in the built-in palette (red, green, blue, yellow, orange, purple, pink, white, warm white, cool white, amber, cyan, magenta, lime, maroon, navy, olive, teal, silver, gray, black, dark blue, light blue).
+- A **palette-icon button** at the end of the swatch row that opens the light entity's "more info" dialog (so you can use the full HA colour picker for tones not in the swatch palette).
+
+The currently-active swatch (matching `light.attributes.rgb_color`) is marked with a 2px ring and a small white check mark.
+
+### `show_light_when_off`
+
+By default, the light control row is hidden whenever the light is `off`. Set `show_light_when_off: true` to keep the swatches visible when the light is off — useful if you want to tap a colour to turn the light on with that colour.
+
+```yaml
+show_light_control: true
+show_light_when_off: true
+```
+
+### Colour Swatches
+
+The swatch row is a small flex row of 24×24 rounded squares, each filled with the colour's RGB. Tapping a swatch calls `light.turn_on` with `rgb_color: [r, g, b]`. The button at the end of the row (a small palette icon) fires a `hass-more-info` event for `light_entity`, opening the full Home Assistant light card so you can pick any colour via the HA colour wheel.
+
+The swatch row is hidden entirely if `light_entity` is not configured.
+
+---
+
+## Child Lock
+
+The card toggles a `lock` entity (not `switch`) for the child-lock row.
+
+```yaml
+show_child_lock: true
+child_lock_entity: lock.bedroom_door
+```
+
+The card reads the current `state` attribute and calls `lock.lock` if `unlocked` or `lock.unlock` if `locked`.
+
+---
+
+## Controls Order
+
+`controls_order` is a comma-separated list of slot keys that determines which expanded-control rows are shown and in what order. The default is:
+
+```yaml
+controls_order:
+  - light
+  - volume_slider
+  - volume_presets
+  - sound
+  - scenes
+  - timer
+  - child_lock
+```
+
+Valid keys:
+
+- `light` — brightness slider + colour swatch row (requires `light_entity` and `show_light_control: true`).
+- `volume_slider` — linear volume slider.
+- `volume_presets` — preset percentage buttons (requires non-empty `volume_presets`).
+- `sound` — sound button row + dropdown (requires `show_sound_control: true` and at least one `available_tone`).
+- `scenes` — scene buttons (requires `show_scenes: true` and at least one scene).
+- `timer` — sleep-timer preset buttons (requires `timer_entity` and `show_timer: true`).
+- `child_lock` — child lock toggle (requires `show_child_lock: true` and `child_lock_entity`).
+
+A row is hidden if its key is not in the list OR if its visibility condition is not met.
 
 ---
 
@@ -212,7 +302,7 @@ show_expand_button: true
 show_timer: true
 timer_entity: timer.sleep_timer
 timer_presets: [15, 30, 60, 120]
-show_brightness_control: true
+show_light_control: true
 ```
 
 ### Full Control Center with Scenes
@@ -221,12 +311,12 @@ show_brightness_control: true
 type: custom:noise-card
 siren_entity: siren.sleep_noise_machine
 light_entity: light.sleep_noise_machine
-child_lock_entity: switch.sleep_noise_machine_child_lock
+child_lock_entity: lock.sleep_noise_machine_child_lock
 name: Noise Machine
 background_mode: volume
 secondary_info: "Sound: {sound} • Brightness: {brightness}%"
 show_expand_button: true
-show_brightness_control: true
+show_light_control: true
 show_sound_control: true
 show_timer: true
 show_child_lock: true

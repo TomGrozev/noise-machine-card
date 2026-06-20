@@ -1,8 +1,4 @@
-import {
-  LitElement,
-  html,
-  css,
-} from "https://unpkg.com/lit-element@2.0.1/lit-element.js?module";
+import { LitElement, html, css } from 'https://unpkg.com/lit-element@2.0.1/lit-element.js?module';
 
 /*
  * Noise Card
@@ -192,6 +188,16 @@ function _autoSoundButtons(tones) {
   }));
 }
 
+/** Helper for the editor: fetch available_tones from a siren entity. */
+function baseTonesForEditor(hass, sirenEntity) {
+  if (!hass || !sirenEntity) return [];
+  const entity = hass.states?.[sirenEntity];
+  if (!entity) return [];
+  return Array.isArray(entity.attributes?.available_tones)
+    ? entity.attributes.available_tones
+    : [];
+}
+
 /* ================================================================== */
 /*  NoiseCard – runtime card                                          */
 /* ================================================================== */
@@ -238,8 +244,9 @@ class NoiseCard extends LitElement {
       show_volume_buttons: true,
       show_volume_slider: false,
       show_sound_control: true,
-      show_brightness_control: false,
-      show_brightness_when_off: false,
+      show_light_control: false,
+      show_light_when_off: false,
+      sound_buttons_show_labels: true,
       show_child_lock: false,
       show_timer: false,
       show_expand_button: false,
@@ -255,7 +262,7 @@ class NoiseCard extends LitElement {
       volume_click_control: true,
       timer_presets: [15, 30, 60, 120],
       controls_order: [
-        "brightness",
+        "light",
         "volume_slider",
         "volume_presets",
         "sound",
@@ -270,13 +277,6 @@ class NoiseCard extends LitElement {
 
     this._config.volume_step = parseFloat(this._config.volume_step) || 0.05;
     this._config = this._sanitizeConfig(this._config);
-  }
-
-  static getConfigElement() {
-    if (!customElements.get("noise-card-editor")) {
-      customElements.define("noise-card-editor", NoiseCardEditor);
-    }
-    return document.createElement("noise-card-editor");
   }
 
   static getStubConfig() {
@@ -776,12 +776,12 @@ class NoiseCard extends LitElement {
   ) {
     const showAlways = !this._config.show_expand_button;
     const controlsMap = {
-      brightness: {
+      light: {
         is_visible: () =>
           hasLight &&
-          this._config.show_brightness_control &&
-          (isOn || this._config.show_brightness_when_off),
-        render: () => this._renderBrightnessControl(lightColor, brightness),
+          this._config.show_light_control &&
+          (isOn || this._config.show_light_when_off),
+        render: () => this._renderLightControl(lightColor, brightness, isOn, light),
       },
       volume_slider: {
         is_visible: () => this._config.show_volume_slider,
@@ -835,7 +835,7 @@ class NoiseCard extends LitElement {
   _hasExpandableControls() {
     const hasLight = !!this._lightState();
     const controlsMap = {
-      brightness: () => hasLight && this._config.show_brightness_control,
+      light: () => hasLight && this._config.show_light_control,
       volume_slider: () => this._config.show_volume_slider,
       volume_presets: () =>
         this._config.volume_presets && this._config.volume_presets.length > 0,
@@ -989,7 +989,7 @@ class NoiseCard extends LitElement {
 
   /* ---- Individual control renderers ---- */
 
-  _renderBrightnessControl(lightColor, brightness) {
+  _renderLightControl(lightColor, brightness, isOn, light) {
     return html`
       <div class="control-row">
         <ha-icon icon="mdi:brightness-6"></ha-icon>
@@ -1014,7 +1014,65 @@ class NoiseCard extends LitElement {
           >${Math.round((brightness / 255) * 100)}%</span
         >
       </div>
+      ${isOn || this._config.show_light_when_off
+        ? this._renderColourSwatches(light)
+        : ""}
     `;
+  }
+
+  _renderColourSwatches(light) {
+    if (!this._config.light_entity) return html``;
+    const currentRgb = light?.attributes?.rgb_color;
+    const isWhiteLight =
+      currentRgb &&
+      currentRgb.join(",") === "0,0,0" &&
+      (light?.attributes?.brightness || 0) > 0;
+    const activeRgb = isWhiteLight
+      ? null
+      : currentRgb
+        ? currentRgb.join(",")
+        : null;
+
+    return html`
+      <div class="colour-swatches">
+        ${Object.entries(COLOR_NAMES).map(
+          ([name, rgb]) => html`
+            <button
+              class="colour-swatch ${activeRgb === rgb.join(",")
+                ? "active"
+                : ""}"
+              style="background-color: rgb(${rgb.join(",")});"
+              title="${name}"
+              aria-label="${name}"
+              @click="${() => this._handleColourSwatchTap(rgb)}"
+            ></button>
+          `,
+        )}
+        <button
+          class="colour-swatch colour-swatch-more"
+          title="More colours"
+          aria-label="More colours"
+          @click="${this._handleColourMoreInfo}"
+        >
+          <ha-icon icon="mdi:palette"></ha-icon>
+        </button>
+      </div>
+    `;
+  }
+
+  _handleColourSwatchTap(rgb) {
+    this._vibrate();
+    if (!this._config.light_entity) return;
+    this.hass.callService("light", "turn_on", {
+      entity_id: this._config.light_entity,
+      rgb_color: rgb,
+    });
+  }
+
+  _handleColourMoreInfo() {
+    this._vibrate();
+    if (!this._config.light_entity) return;
+    this._showMoreInfo();
   }
 
   _renderVolumeSliderControl(volumeLevel, lightColor) {
@@ -1078,6 +1136,7 @@ class NoiseCard extends LitElement {
     const buttonTones = new Set(buttons.map((b) => b.tone));
     const dropdownTones = tones.filter((t) => !buttonTones.has(t));
     const stop = (e) => e.stopPropagation();
+    const showLabels = this._config.sound_buttons_show_labels !== false;
 
     return html`
       <div class="control-row sound-control">
@@ -1091,7 +1150,7 @@ class NoiseCard extends LitElement {
                       <button
                         class="action-button ${btn.tone === currentTone
                           ? "active"
-                          : ""}"
+                          : ""} ${showLabels ? "" : "icon-only"}"
                         @click="${(e) => {
                           e.stopPropagation();
                           this._handleSoundButtonTap(btn.tone);
@@ -1101,9 +1160,9 @@ class NoiseCard extends LitElement {
                         <ha-icon
                           icon="${btn.icon || "mdi:music-note"}"
                         ></ha-icon>
-                        ${btn.label
+                        ${showLabels
                           ? html`<span class="sound-btn-label"
-                              >${btn.label}</span
+                              >${btn.label || btn.tone}</span
                             >`
                           : ""}
                       </button>
@@ -1186,7 +1245,7 @@ class NoiseCard extends LitElement {
   _renderChildLockControl() {
     const lockEntity = this._childLockState();
     if (!lockEntity) return this._renderWarning("Child lock entity not found.");
-    const locked = lockEntity.state === "on";
+    const locked = lockEntity.state === "locked";
 
     return html`
       <div class="control-row toggle-row">
@@ -1507,7 +1566,10 @@ class NoiseCard extends LitElement {
 
   _toggleChildLock() {
     this._vibrate();
-    this.hass.callService("switch", "toggle", {
+    const lockState = this._childLockState();
+    if (!lockState) return;
+    const isLocked = lockState.state === "locked";
+    this.hass.callService("lock", isLocked ? "unlock" : "lock", {
       entity_id: this._config.child_lock_entity,
     });
   }
@@ -1640,7 +1702,7 @@ class NoiseCard extends LitElement {
       return;
     if (
       e.target.closest(
-        ".volume-button, .icon-container, .header, .expand-button, .expanded-controls",
+        ".action-button, .icon-container, .header, .expand-button, .expanded-controls",
       )
     )
       return;
@@ -1679,11 +1741,11 @@ class NoiseCard extends LitElement {
     for (const key of controls) {
       let enabled = false;
       switch (key) {
-        case "brightness":
+        case "light":
           enabled =
             hasLight &&
-            !!c.show_brightness_control &&
-            (lightOn || !!c.show_brightness_when_off);
+            !!c.show_light_control &&
+            (lightOn || !!c.show_light_when_off);
           break;
         case "volume_slider":
           enabled = !!c.show_volume_slider;
@@ -1960,8 +2022,9 @@ class NoiseCard extends LitElement {
         transform: rotate(180deg);
       }
       .expanded-controls {
-        margin-top: 8px;
+        margin-top: 0;
         padding: 0;
+        padding-top: 8px;
         border-top: 1px solid var(--divider-color);
         display: flex;
         flex-direction: column;
@@ -2180,6 +2243,11 @@ class NoiseCard extends LitElement {
         height: 36px;
         gap: 4px;
       }
+      .sound-buttons .action-button.icon-only {
+        width: 36px;
+        padding: 0;
+        justify-content: center;
+      }
       .sound-btn-label {
         font-size: 12px;
         max-width: 80px;
@@ -2199,6 +2267,62 @@ class NoiseCard extends LitElement {
       }
       .control-row.toggle-row {
         justify-content: space-between;
+      }
+      .colour-swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding-top: 8px;
+        padding-left: 36px;
+      }
+      .colour-swatch {
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        cursor: pointer;
+        position: relative;
+        flex: 0 0 auto;
+        padding: 0;
+        box-sizing: border-box;
+        transition:
+          transform var(--animation-duration, 250ms) ease-out,
+          box-shadow var(--animation-duration, 250ms) ease-out;
+      }
+      .colour-swatch:hover {
+        transform: scale(1.1);
+      }
+      .colour-swatch:active {
+        transform: scale(0.95);
+      }
+      .colour-swatch.active {
+        box-shadow: 0 0 0 2px var(--primary-color);
+      }
+      .colour-swatch.active::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 12px;
+        height: 12px;
+        transform: translate(-50%, -50%);
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='white' d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'/></svg>");
+        background-size: contain;
+        background-repeat: no-repeat;
+        filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.6));
+      }
+      .colour-swatch-more {
+        background-color: rgba(var(--rgb-primary-text-color), 0.05);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .colour-swatch-more ha-icon {
+        --mdc-icon-size: 16px;
+        color: var(--primary-text-color);
+      }
+      .colour-swatch-more:hover {
+        background-color: rgba(var(--rgb-primary-color), 0.12);
       }
       .lock-label,
       .timer-label {
@@ -2294,6 +2418,7 @@ class NoiseCardEditor extends LitElement {
       _expandedSections: { type: Object },
       _searchQuery: { type: String },
       _editingSceneIndex: { type: Number },
+      _editingSoundButtonIndex: { type: Number },
     };
   }
 
@@ -2319,6 +2444,7 @@ class NoiseCardEditor extends LitElement {
     };
     this._searchQuery = "";
     this._editingSceneIndex = null;
+    this._editingSoundButtonIndex = null;
   }
 
   setConfig(config) {
@@ -2532,13 +2658,6 @@ class NoiseCardEditor extends LitElement {
           .map((v) => parseInt(v.trim()))
           .filter((v) => !isNaN(v) && v > 0);
         if (value.length === 0) value = [15, 30, 60, 120];
-      } else if (key === "sound_buttons") {
-        try {
-          value = JSON.parse(target.value);
-          if (!Array.isArray(value)) value = null;
-        } catch (err) {
-          value = null;
-        }
       } else if (key === "scenes_per_row") {
         const numValue = parseInt(target.value);
         value =
@@ -2559,12 +2678,13 @@ class NoiseCardEditor extends LitElement {
         show_volume_buttons: true,
         show_volume_slider: false,
         show_sound_control: true,
-        show_brightness_control: false,
+        show_light_control: false,
         show_timer: false,
         show_scenes: false,
         show_expand_button: false,
-        show_brightness_when_off: false,
+        show_light_when_off: false,
         show_child_lock: false,
+        sound_buttons_show_labels: true,
         haptic: true,
         volume_click_control: true,
         animation_duration: 250,
@@ -2573,7 +2693,7 @@ class NoiseCardEditor extends LitElement {
         timer_presets: [15, 30, 60, 120],
         scenes_per_row: 4,
         controls_order: [
-          "brightness",
+          "light",
           "volume_slider",
           "volume_presets",
           "sound",
@@ -2588,6 +2708,7 @@ class NoiseCardEditor extends LitElement {
         "show_sound_control",
         "haptic",
         "volume_click_control",
+        "sound_buttons_show_labels",
       ];
 
       if (booleanFieldsWithTrueDefaults.includes(key)) {
@@ -2701,6 +2822,122 @@ class NoiseCardEditor extends LitElement {
     );
   }
 
+  /* ---- Sound buttons management ---- */
+
+  _addSoundButton() {
+    const newConfig = { ...this._config };
+    const currentButtons = Array.isArray(newConfig.sound_buttons)
+      ? newConfig.sound_buttons
+      : [];
+    const usedTones = new Set(currentButtons.map((b) => b.tone));
+    const availableTones = baseTonesForEditor(
+      this.hass,
+      newConfig.siren_entity,
+    ).filter((t) => !usedTones.has(t));
+    const newTone = availableTones[0] || "";
+    const newButton = {
+      label: newTone,
+      icon: "mdi:music-note",
+      tone: newTone,
+    };
+    newConfig.sound_buttons = [...currentButtons, newButton];
+    this._editingSoundButtonIndex = newConfig.sound_buttons.length - 1;
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: newConfig },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  _editSoundButton(index) {
+    this._editingSoundButtonIndex = index;
+  }
+
+  _deleteSoundButton(index) {
+    const newConfig = { ...this._config };
+    const currentButtons = Array.isArray(newConfig.sound_buttons)
+      ? newConfig.sound_buttons
+      : [];
+    newConfig.sound_buttons = currentButtons.filter((_, i) => i !== index);
+    if (newConfig.sound_buttons.length === 0) newConfig.sound_buttons = null;
+    if (this._editingSoundButtonIndex === index)
+      this._editingSoundButtonIndex = null;
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: newConfig },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  _updateSoundButton(e, index, field) {
+    const newConfig = { ...this._config };
+    const newButtons = structuredClone(
+      Array.isArray(newConfig.sound_buttons) ? newConfig.sound_buttons : [],
+    );
+    const buttonToUpdate = newButtons[index];
+    if (!buttonToUpdate) return;
+
+    const target = e.target;
+    let value;
+    if (target.tagName === "HA-SWITCH") value = target.checked;
+    else if (target.tagName === "HA-SELECT")
+      value = e.detail?.value ?? target.value;
+    else if (target.tagName === "HA-ICON-PICKER")
+      value = e.detail?.value || "";
+    else value = target.value;
+
+    if (value === "" || value === null || value === undefined) {
+      delete buttonToUpdate[field];
+    } else {
+      buttonToUpdate[field] = value;
+    }
+
+    newConfig.sound_buttons = newButtons;
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: newConfig },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  _moveSoundButton(index, direction) {
+    const newConfig = { ...this._config };
+    const buttons = Array.isArray(newConfig.sound_buttons)
+      ? [...newConfig.sound_buttons]
+      : [];
+    const target = index + direction;
+    if (target < 0 || target >= buttons.length) return;
+    [buttons[index], buttons[target]] = [buttons[target], buttons[index]];
+    newConfig.sound_buttons = buttons;
+    this._editingSoundButtonIndex = target;
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: newConfig },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  _resetSoundButtonsToAuto() {
+    const newConfig = { ...this._config };
+    newConfig.sound_buttons = null;
+    this._editingSoundButtonIndex = null;
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: newConfig },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
   /* ---- Render ---- */
 
   render() {
@@ -2743,8 +2980,8 @@ class NoiseCardEditor extends LitElement {
     if (this._config.show_child_lock) {
       deviceControlsSchema.push({
         name: "child_lock_entity",
-        label: "Child Lock Entity (switch)",
-        selector: { entity: { domain: "switch" } },
+        label: "Child Lock Entity (lock)",
+        selector: { entity: { domain: "lock" } },
       });
     }
 
@@ -2847,7 +3084,7 @@ class NoiseCardEditor extends LitElement {
         label: "Expanded Controls Order",
         value: (
           this._config?.controls_order || [
-            "brightness",
+            "light",
             "volume_slider",
             "volume_presets",
             "sound",
@@ -2906,22 +3143,25 @@ class NoiseCardEditor extends LitElement {
           ? html`
               <label class="switch-wrapper"
                 ><ha-switch
-                  id="show_brightness_control"
-                  .checked="${this._config?.show_brightness_control === true}"
+                  id="show_light_control"
+                  .checked="${this._config?.show_light_control === true}"
                   @change="${this._valueChanged}"
                 ></ha-switch>
                 <div class="switch-label">
-                  <span>Show Brightness Control</span>
+                  <span>Show Light Control</span>
+                  <div class="switch-description">
+                    Brightness slider and colour swatches
+                  </div>
                 </div></label
               >
               <label class="switch-wrapper"
                 ><ha-switch
-                  id="show_brightness_when_off"
-                  .checked="${this._config?.show_brightness_when_off === true}"
+                  id="show_light_when_off"
+                  .checked="${this._config?.show_light_when_off === true}"
                   @change="${this._valueChanged}"
                 ></ha-switch>
                 <div class="switch-label">
-                  <span>Show Brightness When Off</span>
+                  <span>Show Light When Off</span>
                 </div></label
               >
             `
@@ -3022,15 +3262,6 @@ class NoiseCardEditor extends LitElement {
         max: "1000",
         step: "50",
         value: this._config?.animation_duration || 250,
-      })}
-      ${this._tf({
-        id: "sound_buttons",
-        label: "Sound Buttons (JSON, Optional)",
-        value: this._config?.sound_buttons
-          ? JSON.stringify(this._config.sound_buttons)
-          : "",
-        helper:
-          'Array of {"label":"Rain","icon":"mdi:weather-rainy","tone":"Rain"}. Leave empty to auto-derive from available_tones.',
       })}
     `;
 
@@ -3263,6 +3494,175 @@ class NoiseCardEditor extends LitElement {
       </button>
     `;
 
+    /* -- Sound Buttons -- */
+    const hasSiren = !!this._config?.siren_entity;
+    const currentSirenForSound = this._config?.siren_entity;
+    const soundButtonTones = baseTonesForEditor(
+      this.hass,
+      currentSirenForSound,
+    );
+    const currentSoundButtons = Array.isArray(this._config?.sound_buttons)
+      ? this._config.sound_buttons
+      : null;
+
+    const soundButtonsContent = html`
+      <label class="switch-wrapper"
+        ><ha-switch
+          id="sound_buttons_show_labels"
+          .checked="${this._config?.sound_buttons_show_labels !== false}"
+          @change="${this._valueChanged}"
+        ></ha-switch>
+        <div class="switch-label">
+          <span>Show Labels on Sound Buttons</span>
+          <div class="switch-description">
+            When off, only icons are shown.
+          </div>
+        </div></label
+      >
+      ${!hasSiren
+        ? html`<div class="no-scenes">
+            Set siren entity first to configure sound buttons.
+          </div>`
+        : currentSoundButtons === null
+          ? html`
+              <div class="no-scenes">
+                Using auto-derived buttons (first 6 tones).
+              </div>
+              <button
+                class="add-scene-button"
+                @click="${this._addSoundButton}"
+              >
+                <ha-icon icon="mdi:plus"></ha-icon>Customize Sound Buttons
+              </button>
+            `
+          : html`
+              <div class="scene-list">
+                ${currentSoundButtons.map((btn, index) => {
+                  const configuredTone = btn.tone;
+                  const optionTones = [...soundButtonTones];
+                  if (
+                    configuredTone &&
+                    !optionTones.includes(configuredTone)
+                  )
+                    optionTones.unshift(configuredTone);
+                  return html`
+                    <div class="scene-item">
+                      <div
+                        class="scene-summary"
+                        @click="${() => this._editSoundButton(index)}"
+                      >
+                        <ha-icon
+                          icon="${btn.icon || "mdi:music-note"}"
+                        ></ha-icon>
+                        <span>${btn.label || btn.tone || "Button"}</span>
+                        <ha-icon
+                          icon="mdi:arrow-up"
+                          class="reorder-icon"
+                          @click="${(e) => {
+                            e.stopPropagation();
+                            this._moveSoundButton(index, -1);
+                          }}"
+                        ></ha-icon>
+                        <ha-icon
+                          icon="mdi:arrow-down"
+                          class="reorder-icon"
+                          @click="${(e) => {
+                            e.stopPropagation();
+                            this._moveSoundButton(index, 1);
+                          }}"
+                        ></ha-icon>
+                        <ha-icon
+                          icon="mdi:delete"
+                          class="delete-icon"
+                          @click="${(e) => {
+                            e.stopPropagation();
+                            this._deleteSoundButton(index);
+                          }}"
+                        ></ha-icon>
+                      </div>
+                      ${this._editingSoundButtonIndex === index
+                        ? html`
+                            <div class="scene-edit">
+                              <ha-select
+                                label="Tone"
+                                .value="${btn.tone || ""}"
+                                .options=${optionTones.map((m) => ({
+                                  value: m,
+                                  label: m,
+                                }))}
+                                @selected="${(e) =>
+                                  this._updateSoundButton(
+                                    e,
+                                    index,
+                                    "tone",
+                                  )}"
+                                @change="${(e) =>
+                                  this._updateSoundButton(
+                                    e,
+                                    index,
+                                    "tone",
+                                  )}"
+                                @closed="${(e) => e.stopPropagation()}"
+                              >
+                                ${optionTones.map(
+                                  (mode) =>
+                                    html`<mwc-list-item
+                                      .value="${mode}"
+                                      >${mode}</mwc-list-item
+                                    >`,
+                                )}
+                              </ha-select>
+                              <ha-icon-picker
+                                label="Icon"
+                                .value="${btn.icon || ""}"
+                                @value-changed="${(e) =>
+                                  this._updateSoundButton(
+                                    e,
+                                    index,
+                                    "icon",
+                                  )}"
+                                .placeholder="${"mdi:music-note"}"
+                              ></ha-icon-picker>
+                              ${this._tf({
+                                label: "Label",
+                                value: btn.label || "",
+                                placeholder: "Optional",
+                                change: (e) =>
+                                  this._updateSoundButton(
+                                    e,
+                                    index,
+                                    "label",
+                                  ),
+                              })}
+                              <button
+                                class="done-button"
+                                @click="${() =>
+                                  (this._editingSoundButtonIndex = null)}"
+                              >
+                                Done
+                              </button>
+                            </div>
+                          `
+                        : ""}
+                    </div>
+                  `;
+                })}
+              </div>
+              <button
+                class="add-scene-button"
+                @click="${this._addSoundButton}"
+              >
+                <ha-icon icon="mdi:plus"></ha-icon>Add Sound Button
+              </button>
+              <button
+                class="add-scene-button"
+                @click="${this._resetSoundButtonsToAuto}"
+              >
+                <ha-icon icon="mdi:restore"></ha-icon>Reset to Auto-Derive
+              </button>
+            `}
+    `;
+
     return html`
       <div class="editor-toolbar">${this._renderSearchInput()}</div>
       <div class="card-config">
@@ -3293,6 +3693,12 @@ class NoiseCardEditor extends LitElement {
         )}
         ${panel("timer", "Timer Options", "mdi:timer-outline", timerContent)}
         ${panel("scenes", "Scene Control", "mdi:palette", scenesContent)}
+        ${panel(
+          "sound_buttons",
+          "Sound Buttons",
+          "mdi:music-note",
+          soundButtonsContent,
+        )}
       </div>
     `;
   }
@@ -3444,6 +3850,15 @@ class NoiseCardEditor extends LitElement {
         transition: opacity 0.2s;
       }
       .delete-icon:hover {
+        opacity: 1;
+      }
+      .reorder-icon {
+        color: var(--secondary-text-color);
+        cursor: pointer;
+        opacity: 0.7;
+        transition: opacity 0.2s;
+      }
+      .reorder-icon:hover {
         opacity: 1;
       }
       .scene-edit {
