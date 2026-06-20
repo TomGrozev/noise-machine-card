@@ -14,14 +14,6 @@ A sleek, modern Lovelace card to control Tuya-compatible noise machines in Home 
 
 Forked from [eyalgal/hatch-card](https://github.com/eyalgal/hatch-card).
 
-> ⚠️ **BREAKING CHANGES (unreleased):**
-> - `child_lock_entity` must now be a `lock.*` entity (was `switch.*`); the card calls `lock.lock` / `lock.unlock` based on the current state.
-> - The `controls_order` slot key `brightness` has been renamed to `light`.
-> - `show_brightness_control` is now `show_light_control`.
-> - `show_brightness_when_off` is now `show_light_when_off`.
->
-> See the "Light Control", "Child Lock", and "Sound Buttons" sections below for details.
-
 ## ✨ Features
 
 - **Sound Control:** Configurable button row + dropdown picker for tones, powered by `available_tones` / `siren.turn_on`. Optional icon-only mode.
@@ -75,42 +67,42 @@ Forked from [eyalgal/hatch-card](https://github.com/eyalgal/hatch-card).
 
 ## Main Configuration
 
-| Name                       | Type      | Default             | Description                                                                          |
-| :------------------------- | :-------- | :------------------ | :----------------------------------------------------------------------------------- |
-| `type`                     | `string`  | **Required**        | `custom:noise-card`                                                                  |
-| `siren_entity`             | `string`  | **Required**        | The `siren` entity that plays sounds.                                                |
-| `light_entity`             | `string`  | `null`              | Optional `light` entity.                                                             |
-| `child_lock_entity`        | `string`  | `null`              | Optional `lock` entity for child lock. The card calls `lock.lock` / `lock.unlock`.   |
-| `timer_entity`             | `string`  | `null`              | Optional HA `timer.*` helper for sleep timer presets.                                |
-| `name`                     | `string`  | Entity Name         | A custom name for the card.                                                          |
-| `icon`                     | `string`  | `mdi:speaker`       | A custom icon (overridden by dynamic tone icons unless set).                         |
-| `user_photo`               | `string`  | `null`              | A URL to a photo to use instead of an icon.                                          |
-| `layout`                   | `string`  | `horizontal`        | Card layout: `horizontal` or `vertical`.                                             |
-| `background_mode`          | `string`  | `full`              | Background style: `full`, `volume`, or `none` (requires light entity).               |
-| `secondary_info`           | `string`  | auto                | Custom text with `{volume}`, `{sound}`, `{brightness}` placeholders. Empty = auto.   |
-| `controls_order`           | `array`   | `[...]`             | Comma-separated list to re-order expanded controls. See below.                       |
-| `show_volume_buttons`      | `boolean` | `true`              | Show the volume up/down buttons.                                                     |
-| `show_volume_slider`       | `boolean` | `false`             | Show a volume slider in expanded controls.                                           |
-| `show_expand_button`       | `boolean` | `false`             | Hide expanded controls behind an expand button.                                      |
-| `show_sound_control`       | `boolean` | `true`              | Show the sound picker (button row + dropdown).                                       |
-| `show_light_control`       | `boolean` | `false`             | Show the light control row — brightness slider + colour swatches (requires light).   |
-| `show_light_when_off`      | `boolean` | `false`             | Show the light control row even when the light is off.                               |
-| `show_timer`               | `boolean` | `false`             | Show sleep timer presets (requires `timer_entity`).                                  |
-| `show_child_lock`          | `boolean` | `false`             | Show child lock toggle (requires `child_lock_entity`).                               |
-| `show_scenes`              | `boolean` | `false`             | Show scene buttons.                                                                  |
-| `volume_step`              | `number`  | `0.05`              | Amount to change the volume with each button press (0.0 – 1.0).                      |
-| `volume_presets`           | `array`   | `[]`                | Array of volume levels (0.0 – 1.0) for preset buttons. Example: `[0.25, 0.5, 0.75]`. |
-| `sound_buttons`            | `array`   | `null`              | Custom button definitions. `null` = auto-derive from `available_tones`. See below.   |
-| `sound_buttons_show_labels` | `boolean` | `true`             | When `false`, sound buttons render as icon-only (36×36 squares, no label text).      |
-| `timer_presets`            | `array`   | `[15, 30, 60, 120]` | Timer presets in minutes.                                                            |
-| `scenes`                   | `array`   | `[]`                | Scene definitions. See Scene Configuration below.                                    |
-| `scenes_per_row`           | `number`  | `4`                 | Number of scene buttons per row.                                                     |
-| `haptic`                   | `boolean` | `true`              | Enable haptic feedback on touch.                                                     |
-| `volume_click_control`     | `boolean` | `true`              | When `background_mode` is `volume`, click card background to set volume.             |
-| `animation_duration`       | `number`  | `250`               | Duration of animations in ms. Set to `0` to disable.                                 |
-| `tap_action`               | `object`  | `action: toggle`    | Action on icon tap.                                                                  |
-| `hold_action`              | `object`  | `action: more-info` | Action on icon hold.                                                                 |
-| `double_tap_action`        | `object`  | `action: none`      | Action on icon double-tap.                                                           |
+| Name                        | Type      | Default             | Description                                                                          |
+| :-------------------------- | :-------- | :------------------ | :----------------------------------------------------------------------------------- |
+| `type`                      | `string`  | **Required**        | `custom:noise-card`                                                                  |
+| `siren_entity`              | `string`  | **Required**        | The `siren` entity that plays sounds.                                                |
+| `light_entity`              | `string`  | `null`              | Optional `light` entity.                                                             |
+| `child_lock_entity`         | `string`  | `null`              | Optional `lock` entity for child lock. The card calls `lock.lock` / `lock.unlock`.   |
+| `timer_entity`              | `string`  | `null`              | Optional HA `timer.*` helper for sleep timer presets.                                |
+| `name`                      | `string`  | Entity Name         | A custom name for the card.                                                          |
+| `icon`                      | `string`  | `mdi:speaker`       | A custom icon (overridden by dynamic tone icons unless set).                         |
+| `user_photo`                | `string`  | `null`              | A URL to a photo to use instead of an icon.                                          |
+| `layout`                    | `string`  | `horizontal`        | Card layout: `horizontal` or `vertical`.                                             |
+| `background_mode`           | `string`  | `full`              | Background style: `full`, `volume`, or `none` (requires light entity).               |
+| `secondary_info`            | `string`  | auto                | Custom text with `{volume}`, `{sound}`, `{brightness}` placeholders. Empty = auto.   |
+| `controls_order`            | `array`   | `[...]`             | Comma-separated list to re-order expanded controls. See below.                       |
+| `show_volume_buttons`       | `boolean` | `true`              | Show the volume up/down buttons.                                                     |
+| `show_volume_slider`        | `boolean` | `false`             | Show a volume slider in expanded controls.                                           |
+| `show_expand_button`        | `boolean` | `false`             | Hide expanded controls behind an expand button.                                      |
+| `show_sound_control`        | `boolean` | `true`              | Show the sound picker (button row + dropdown).                                       |
+| `show_light_control`        | `boolean` | `false`             | Show the light control row — brightness slider + colour swatches (requires light).   |
+| `show_light_when_off`       | `boolean` | `false`             | Show the light control row even when the light is off.                               |
+| `show_timer`                | `boolean` | `false`             | Show sleep timer presets (requires `timer_entity`).                                  |
+| `show_child_lock`           | `boolean` | `false`             | Show child lock toggle (requires `child_lock_entity`).                               |
+| `show_scenes`               | `boolean` | `false`             | Show scene buttons.                                                                  |
+| `volume_step`               | `number`  | `0.05`              | Amount to change the volume with each button press (0.0 – 1.0).                      |
+| `volume_presets`            | `array`   | `[]`                | Array of volume levels (0.0 – 1.0) for preset buttons. Example: `[0.25, 0.5, 0.75]`. |
+| `sound_buttons`             | `array`   | `null`              | Custom button definitions. `null` = auto-derive from `available_tones`. See below.   |
+| `sound_buttons_show_labels` | `boolean` | `true`              | When `false`, sound buttons render as icon-only (36×36 squares, no label text).      |
+| `timer_presets`             | `array`   | `[15, 30, 60, 120]` | Timer presets in minutes.                                                            |
+| `scenes`                    | `array`   | `[]`                | Scene definitions. See Scene Configuration below.                                    |
+| `scenes_per_row`            | `number`  | `4`                 | Number of scene buttons per row.                                                     |
+| `haptic`                    | `boolean` | `true`              | Enable haptic feedback on touch.                                                     |
+| `volume_click_control`      | `boolean` | `true`              | When `background_mode` is `volume`, click card background to set volume.             |
+| `animation_duration`        | `number`  | `250`               | Duration of animations in ms. Set to `0` to disable.                                 |
+| `tap_action`                | `object`  | `action: toggle`    | Action on icon tap.                                                                  |
+| `hold_action`               | `object`  | `action: more-info` | Action on icon hold.                                                                 |
+| `double_tap_action`         | `object`  | `action: none`      | Action on icon double-tap.                                                           |
 
 ---
 

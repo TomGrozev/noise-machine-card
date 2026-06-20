@@ -2479,6 +2479,7 @@ class NoiseCard extends LitElement {
       }
       .control-row {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         gap: 12px;
         min-height: 56px;
