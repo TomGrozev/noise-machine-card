@@ -2504,8 +2504,8 @@ class NoiseCard extends LitElement {
       }
       .slider-container {
         position: relative;
-        flex: 1 1 160px;
-        min-width: 160px;
+        flex: 1 1 auto;
+        min-width: 0;
         height: 40px;
         display: flex;
         align-items: center;
@@ -2691,7 +2691,9 @@ class NoiseCard extends LitElement {
         flex-wrap: wrap;
         gap: 6px;
         align-items: center;
-        flex-basis: 100%;
+        margin-left: 36px;
+        margin-top: 4px;
+        flex-basis: calc(100% - 36px);
       }
       .effect-buttons {
         display: flex;
