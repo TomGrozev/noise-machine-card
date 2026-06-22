@@ -395,9 +395,7 @@ class NoiseCard extends LitElement {
     // Re-subscribe if the configured light entity changed.
     if (changedProps.has("_config")) {
       const prev = changedProps.get("_config");
-      if (
-        this._config?.light_entity !== prev?.light_entity
-      ) {
+      if (this._config?.light_entity !== prev?.light_entity) {
         this._unsubscribeEntityRegistryUpdates();
         this._entityRegistryEntry = null;
         this._subscribeEntityRegistryUpdates();
@@ -548,7 +546,7 @@ class NoiseCard extends LitElement {
     if (!this._config.siren_entity) {
       return html`
         <ha-card>
-          <div class="grid">
+          <div class="grid" style="padding: 6px 4px;">
             <div
               style="padding: 16px; text-align: center; color: var(--secondary-text-color);"
             >
@@ -882,7 +880,8 @@ class NoiseCard extends LitElement {
           hasLight &&
           this._config.show_light_control &&
           (isOn || this._config.show_light_when_off),
-        render: () => this._renderLightControl(lightColor, brightness, isOn, light),
+        render: () =>
+          this._renderLightControl(lightColor, brightness, isOn, light),
       },
       volume_slider: {
         is_visible: () => this._config.show_volume_slider,
@@ -1104,7 +1103,8 @@ class NoiseCard extends LitElement {
           <div class="slider-track">
             <div
               class="slider-fill"
-              style="width: ${(brightness / 255) * 100}%; background-color: ${lightColor};"
+              style="width: ${(brightness / 255) *
+              100}%; background-color: ${lightColor};"
             ></div>
           </div>
           <input
@@ -1116,7 +1116,9 @@ class NoiseCard extends LitElement {
             @input="${this._handleBrightnessChange}"
           />
         </div>
-        <span class="control-value">${Math.round((brightness / 255) * 100)}%</span>
+        <span class="control-value"
+          >${Math.round((brightness / 255) * 100)}%</span
+        >
         ${showSwatches ? this._renderColourSwatches(light) : ""}
       </div>
     `;
@@ -1146,7 +1148,8 @@ class NoiseCard extends LitElement {
       effectsToShow = effects.slice(0, maxButtons - swatchSlots);
     }
 
-    if (swatchesToShow.length === 0 && effectsToShow.length === 0) return html``;
+    if (swatchesToShow.length === 0 && effectsToShow.length === 0)
+      return html``;
 
     // Active detection: for each swatch, derive its RGB form and compare
     // to the light's current rgb_color (or detect white-light state).
@@ -1167,7 +1170,9 @@ class NoiseCard extends LitElement {
         ${swatchesToShow.map(
           ({ favourite, rgb, label }) => html`
             <button
-              class="colour-swatch ${activeRgb === rgb.join(",") ? "active" : ""}"
+              class="colour-swatch ${activeRgb === rgb.join(",")
+                ? "active"
+                : ""}"
               style="background-color: rgb(${rgb.join(",")});"
               title="${label}"
               aria-label="${label}"
@@ -1217,8 +1222,7 @@ class NoiseCard extends LitElement {
     if (!light) return [];
 
     // (1) User's custom favourites from the entity registry entry
-    const custom =
-      this._entityRegistryEntry?.options?.light?.favorite_colors;
+    const custom = this._entityRegistryEntry?.options?.light?.favorite_colors;
     if (Array.isArray(custom) && custom.length > 0) {
       const out = [];
       custom.forEach((fav, idx) => {
@@ -1265,7 +1269,10 @@ class NoiseCard extends LitElement {
 
     // Strip the "off" / "none" entry and any empties
     const cleaned = effectList.filter(
-      (e) => typeof e === "string" && e.trim() !== "" && !/^(off|none)$/i.test(e.trim()),
+      (e) =>
+        typeof e === "string" &&
+        e.trim() !== "" &&
+        !/^(off|none)$/i.test(e.trim()),
     );
 
     // Apply user-configured whitelist (if non-empty)
@@ -1278,9 +1285,11 @@ class NoiseCard extends LitElement {
   }
 
   _labelForFavorite(fav, idx) {
-    if (fav.rgb_color) return this._findColorNameByRgb(fav.rgb_color) || `Color ${idx + 1}`;
+    if (fav.rgb_color)
+      return this._findColorNameByRgb(fav.rgb_color) || `Color ${idx + 1}`;
     if (fav.hs_color) return `Color ${idx + 1}`;
-    if (typeof fav.color_temp_kelvin === "number") return `${fav.color_temp_kelvin}K`;
+    if (typeof fav.color_temp_kelvin === "number")
+      return `${fav.color_temp_kelvin}K`;
     if (fav.rgbw_color) return `Color ${idx + 1}`;
     if (fav.rgbww_color) return `Color ${idx + 1}`;
     return `Color ${idx + 1}`;
@@ -1370,7 +1379,12 @@ class NoiseCard extends LitElement {
     const maxK = light?.attributes?.max_color_temp_kelvin;
     const out = [];
 
-    if (supportsColorTemp && Number.isFinite(minK) && Number.isFinite(maxK) && maxK > minK) {
+    if (
+      supportsColorTemp &&
+      Number.isFinite(minK) &&
+      Number.isFinite(maxK) &&
+      maxK > minK
+    ) {
       for (let i = 1; i <= 4; i++) {
         const k = Math.round(minK + ((maxK - minK) * i) / 5);
         out.push({
@@ -3353,8 +3367,7 @@ class NoiseCardEditor extends LitElement {
     if (target.tagName === "HA-SWITCH") value = target.checked;
     else if (target.tagName === "HA-SELECT")
       value = e.detail?.value ?? target.value;
-    else if (target.tagName === "HA-ICON-PICKER")
-      value = e.detail?.value || "";
+    else if (target.tagName === "HA-ICON-PICKER") value = e.detail?.value || "";
     else value = target.value;
 
     if (value === "" || value === null || value === undefined) {
@@ -4013,9 +4026,7 @@ class NoiseCardEditor extends LitElement {
         ></ha-switch>
         <div class="switch-label">
           <span>Show Labels on Sound Buttons</span>
-          <div class="switch-description">
-            When off, only icons are shown.
-          </div>
+          <div class="switch-description">When off, only icons are shown.</div>
         </div></label
       >
       ${!hasSiren
@@ -4027,10 +4038,7 @@ class NoiseCardEditor extends LitElement {
               <div class="no-scenes">
                 Using auto-derived buttons (first 6 tones).
               </div>
-              <button
-                class="add-scene-button"
-                @click="${this._addSoundButton}"
-              >
+              <button class="add-scene-button" @click="${this._addSoundButton}">
                 <ha-icon icon="mdi:plus"></ha-icon>Customize Sound Buttons
               </button>
             `
@@ -4039,10 +4047,7 @@ class NoiseCardEditor extends LitElement {
                 ${currentSoundButtons.map((btn, index) => {
                   const configuredTone = btn.tone;
                   const optionTones = [...soundButtonTones];
-                  if (
-                    configuredTone &&
-                    !optionTones.includes(configuredTone)
-                  )
+                  if (configuredTone && !optionTones.includes(configuredTone))
                     optionTones.unshift(configuredTone);
                   return html`
                     <div class="scene-item">
@@ -4090,23 +4095,14 @@ class NoiseCardEditor extends LitElement {
                                   label: m,
                                 }))}
                                 @selected="${(e) =>
-                                  this._updateSoundButton(
-                                    e,
-                                    index,
-                                    "tone",
-                                  )}"
+                                  this._updateSoundButton(e, index, "tone")}"
                                 @change="${(e) =>
-                                  this._updateSoundButton(
-                                    e,
-                                    index,
-                                    "tone",
-                                  )}"
+                                  this._updateSoundButton(e, index, "tone")}"
                                 @closed="${(e) => e.stopPropagation()}"
                               >
                                 ${optionTones.map(
                                   (mode) =>
-                                    html`<mwc-list-item
-                                      .value="${mode}"
+                                    html`<mwc-list-item .value="${mode}"
                                       >${mode}</mwc-list-item
                                     >`,
                                 )}
@@ -4115,11 +4111,7 @@ class NoiseCardEditor extends LitElement {
                                 label="Icon"
                                 .value="${btn.icon || ""}"
                                 @value-changed="${(e) =>
-                                  this._updateSoundButton(
-                                    e,
-                                    index,
-                                    "icon",
-                                  )}"
+                                  this._updateSoundButton(e, index, "icon")}"
                                 .placeholder="${"mdi:music-note"}"
                               ></ha-icon-picker>
                               ${this._tf({
@@ -4127,11 +4119,7 @@ class NoiseCardEditor extends LitElement {
                                 value: btn.label || "",
                                 placeholder: "Optional",
                                 change: (e) =>
-                                  this._updateSoundButton(
-                                    e,
-                                    index,
-                                    "label",
-                                  ),
+                                  this._updateSoundButton(e, index, "label"),
                               })}
                               <button
                                 class="done-button"
@@ -4147,10 +4135,7 @@ class NoiseCardEditor extends LitElement {
                   `;
                 })}
               </div>
-              <button
-                class="add-scene-button"
-                @click="${this._addSoundButton}"
-              >
+              <button class="add-scene-button" @click="${this._addSoundButton}">
                 <ha-icon icon="mdi:plus"></ha-icon>Add Sound Button
               </button>
               <button
