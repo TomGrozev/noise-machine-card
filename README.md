@@ -22,7 +22,7 @@ Forked from [eyalgal/hatch-card](https://github.com/eyalgal/hatch-card).
 - **Child Lock (Optional):** Toggle a `lock` entity directly from the card.
 - **Sleep Timer (Optional):** Preset buttons that start an HA `timer.*` helper, with live remaining-time display and a timer ring around the icon.
 - **Scenes:** Configurable scene buttons that execute siren + light presets or activate HA scene entities.
-- **Customisable Layout:** Horizontal or vertical, with an optional expand button to tuck away controls.
+- **Customisable Layout:** Horizontal, vertical, or the two small `variant`s — `strip` (full-width row) and `compact` (tile) — with an optional expand button to tuck away controls.
 - **Sound Buttons:** Auto-derives the first 6 tones as icon buttons — or supply your own `sound_buttons` array, edited in the GUI.
 - **Full Action Support:** `tap_action`, `hold_action`, `double_tap_action` on the icon.
 - **Visual Editor:** Full Lovelace UI editor with search, expansion panels, and ha-form fields.
@@ -78,6 +78,7 @@ Forked from [eyalgal/hatch-card](https://github.com/eyalgal/hatch-card).
 | `icon`                      | `string`  | `mdi:speaker`       | A custom icon (overridden by dynamic tone icons unless set).                         |
 | `user_photo`                | `string`  | `null`              | A URL to a photo to use instead of an icon.                                          |
 | `layout`                    | `string`  | `horizontal`        | Card layout: `horizontal` or `vertical`.                                             |
+| `variant`                   | `string`  | `null`              | Compact layout variant: `strip` or `compact`. See Layout Variants below.             |
 | `background_mode`           | `string`  | `full`              | Background style: `full`, `volume`, or `none` (requires light entity).               |
 | `secondary_info`            | `string`  | auto                | Custom text with `{volume}`, `{sound}`, `{brightness}` placeholders. Empty = auto.   |
 | `controls_order`            | `array`   | `[...]`             | Comma-separated list to re-order expanded controls. See below.                       |
@@ -345,6 +346,68 @@ layout: vertical
 name: Bedside
 secondary_info: "{sound}"
 ```
+
+---
+
+## Layout Variants
+
+Beside the classic full card (`variant` omitted) the card ships two small layouts for hero rows
+and status strips. Both show the **active sound name** (`siren` `tone` attribute, falling back to
+the card name) and the remaining sleep-timer time. Neither renders the expanded controls, the
+background mode or the volume buttons — use the full card for those.
+
+| Variant             | Size                                | Contents                                            |
+| :------------------ | :---------------------------------- | :-------------------------------------------------- |
+| `strip`             | full width × ≈56 px                 | tone icon (timer ring), sound name, timer, power ⏻ |
+| `compact`           | ≈118 px tall (⅓ width in a 3-up row)| `mdi-white-noise` icon (timer ring), sound name, timer |
+
+### `variant: strip`
+
+```yaml
+type: custom:noise-card
+siren_entity: siren.sleep_noise_machine_sound
+timer_entity: timer.noise_machine_sleep_timer
+variant: strip
+```
+
+A single full-width row: tap the power button to toggle the siren (and the light, if
+configured) on/off. Good for a "Hamish asleep · 42 min left" status strip.
+
+### `variant: compact`
+
+```yaml
+type: custom:noise-card
+siren_entity: siren.sleep_noise_machine_sound
+timer_entity: timer.noise_machine_sleep_timer
+variant: compact
+```
+
+A small tile: tapping it runs the card's normal `tap_action` (default: toggle), holding runs
+`hold_action` (default: more-info). The icon is `mdi-white-noise` in both states — set `icon:`
+in the config to override it. Running timers draw a progress ring around the icon and the
+remaining time underneath it.
+
+At ~390 px wide, place three tiles in a `horizontal-stack` (or a `grid` card) so each one is
+about a third of the screen:
+
+```yaml
+type: horizontal-stack
+cards:
+  - type: custom:noise-card
+    siren_entity: siren.sleep_noise_machine_sound
+    timer_entity: timer.noise_machine_sleep_timer
+    variant: compact
+  - type: custom:noise-card
+    siren_entity: siren.sleep_noise_machine_sound
+    variant: compact
+  - type: custom:noise-card
+    siren_entity: siren.other_noise_machine
+    variant: compact
+```
+
+In a sections view the grid is four columns wide, so a `compact` card placed directly in a
+section requests one column (a quarter of the section) and can be resized with the card's
+resize handle; a `strip` card requests the full section width.
 
 ---
 

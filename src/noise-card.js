@@ -253,6 +253,7 @@ class NoiseCard extends LitElement {
 
     this._config = {
       layout: "horizontal",
+      variant: null,
       icon: "mdi:speaker",
       name: null,
       light_entity: null,
@@ -299,6 +300,15 @@ class NoiseCard extends LitElement {
     };
 
     this._config.volume_step = parseFloat(this._config.volume_step) || 0.05;
+
+    // `variant` selects one of the compact/small layout variants. Anything
+    // else (including the default `null`) keeps the classic full card.
+    const variant = String(this._config.variant || "")
+      .trim()
+      .toLowerCase();
+    this._config.variant =
+      variant === "strip" || variant === "compact" ? variant : null;
+
     this._config = this._sanitizeConfig(this._config);
   }
 
@@ -647,6 +657,37 @@ class NoiseCard extends LitElement {
       volumePercent,
       hasLight,
     );
+
+    // Compact / strip variants replace the classic card body entirely. They
+    // show the active sound name instead of the card name and never render
+    // the expanded controls.
+    const variant = this._config.variant;
+    if (variant === "strip" || variant === "compact") {
+      const soundLabel = tone || name;
+      return html`
+        <ha-card
+          style="${cardStyle}"
+          class="variant-${variant} ${isOn ? "is-on" : "is-off"}"
+          @click="${this._handleCardClick}"
+        >
+          ${variant === "strip"
+            ? this._renderStripVariant(
+                isOn,
+                lightColor,
+                activeIcon,
+                soundLabel,
+                this._timerRemaining,
+              )
+            : this._renderCompactVariant(
+                isOn,
+                lightColor,
+                soundLabel,
+                this._timerRemaining,
+              )}
+        </ha-card>
+      `;
+    }
+
     const isVertical = this._config.layout === "vertical";
     const layoutClass = isVertical ? "vertical-layout" : "horizontal-layout";
     const expandedClass = this._showControls ? "expanded" : "";
@@ -717,6 +758,70 @@ class NoiseCard extends LitElement {
         </div>
       </ha-card>
     `;
+  }
+
+  /* ---- Variants (strip / compact) ---- */
+
+  _renderStripVariant(isOn, lightColor, activeIcon, soundLabel, timerLabel) {
+    const { bg, fg } = this._iconButtonColors(lightColor);
+    return html`
+      <div class="strip-row" @click="${(e) => e.stopPropagation()}">
+        <div class="icon-container strip-icon">
+          ${this._renderIconOrPhoto(isOn, lightColor, activeIcon)}
+        </div>
+        <div class="strip-name">${soundLabel}</div>
+        ${timerLabel ? html`<div class="strip-timer">${timerLabel}</div>` : ""}
+        <button
+          class="action-button icon-button strip-power"
+          style="--button-bg: ${bg}; --button-fg: ${fg};"
+          aria-pressed="${isOn ? "true" : "false"}"
+          aria-label="${isOn ? "Turn off" : "Turn on"} ${soundLabel}"
+          @click="${this._handlePowerTap}"
+        >
+          <ha-icon icon="mdi:power"></ha-icon>
+        </button>
+      </div>
+    `;
+  }
+
+  _renderCompactVariant(isOn, lightColor, soundLabel, timerLabel) {
+    // Fixed icon for both states; state is carried by the shape tint.
+    const icon = this._userProvidedIcon || "mdi:white-noise";
+    return html`
+      <div
+        class="compact-tile"
+        role="button"
+        tabindex="0"
+        aria-pressed="${isOn ? "true" : "false"}"
+        aria-label="${soundLabel}"
+        @mousedown="${this._handleMouseDown}"
+        @mouseup="${this._handleMouseUp}"
+        @touchstart="${this._handleTouchStart}"
+        @touchend="${this._handleTouchEnd}"
+        @touchcancel="${this._handleTouchCancel}"
+        @keydown="${this._handleTileKeydown}"
+        @click="${(e) => e.stopPropagation()}"
+      >
+        ${this._renderIconOrPhoto(isOn, lightColor, icon, false, 40)}
+        <div class="compact-name">${soundLabel}</div>
+        ${timerLabel
+          ? html`<div class="compact-timer">${timerLabel}</div>`
+          : ""}
+      </div>
+    `;
+  }
+
+  _handlePowerTap(e) {
+    e.stopPropagation();
+    this._vibrate();
+    this._toggleDevice();
+  }
+
+  _handleTileKeydown(e) {
+    if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+      e.preventDefault();
+      this._handleAction(this._config.tap_action);
+    }
   }
 
   /* ---- Layouts ---- */
@@ -981,7 +1086,13 @@ class NoiseCard extends LitElement {
 
   /* ---- Icon / Photo (with timer ring) ---- */
 
-  _renderIconOrPhoto(isOn, lightColorStyle, activeIcon, isVertical = false) {
+  _renderIconOrPhoto(
+    isOn,
+    lightColorStyle,
+    activeIcon,
+    isVertical = false,
+    sizeOverride = null,
+  ) {
     if (this._config.user_photo) {
       return html`<img
         class="user-photo ${isVertical ? "vertical" : ""}"
@@ -1003,51 +1114,11 @@ class NoiseCard extends LitElement {
     const shapeStyle = `background-color: ${shapeBg}`;
     const iconStyle = `color: ${isOn ? lightColorStyle : "var(--primary-text-color, var(--paper-item-icon-color))"}`;
 
-    // Timer ring (from hatch)
-    const size = isVertical ? 48 : 36;
-    const strokeWidth = 3;
-    const svgSize = size + strokeWidth * 2;
-    const center = svgSize / 2;
-    const radius = size / 2 + strokeWidth / 2;
-    const circumference = radius * 2 * Math.PI;
-    const strokeDashoffset =
-      circumference - (this._timerPercent / 100) * circumference;
-
-    const timerRing =
-      this._timerPercent > 0
-        ? html`
-            <svg
-              style="
-                    position: absolute;
-                    top: -${strokeWidth}px;
-                    left: -${strokeWidth}px;
-                    width: ${svgSize}px;
-                    height: ${svgSize}px;
-                    transform: rotate(-90deg);
-                    pointer-events: none;
-                "
-            >
-              <circle
-                stroke="rgba(var(--rgb-primary-text-color), 0.1)"
-                fill="transparent"
-                stroke-width="${strokeWidth}"
-                r="${radius}"
-                cx="${center}"
-                cy="${center}"
-              />
-              <circle
-                stroke="${lightColorStyle}"
-                fill="transparent"
-                stroke-width="${strokeWidth}"
-                stroke-dasharray="${circumference} ${circumference}"
-                style="stroke-dashoffset: ${strokeDashoffset}; transition: stroke-dashoffset 0.25s;"
-                r="${radius}"
-                cx="${center}"
-                cy="${center}"
-              />
-            </svg>
-          `
-        : "";
+    const timerRing = this._renderTimerRing(
+      lightColorStyle,
+      sizeOverride || (isVertical ? 48 : 36),
+      3,
+    );
 
     return html`
       <div
@@ -1060,21 +1131,76 @@ class NoiseCard extends LitElement {
     `;
   }
 
+  /* Timer progress ring (from hatch). `size` is the icon diameter in px. */
+  _renderTimerRing(lightColorStyle, size, strokeWidth = 3) {
+    if (!(this._timerPercent > 0)) return "";
+
+    const svgSize = size + strokeWidth * 2;
+    const center = svgSize / 2;
+    const radius = size / 2 + strokeWidth / 2;
+    const circumference = radius * 2 * Math.PI;
+    const strokeDashoffset =
+      circumference - (this._timerPercent / 100) * circumference;
+
+    return html`
+      <svg
+        style="
+                    position: absolute;
+                    top: -${strokeWidth}px;
+                    left: -${strokeWidth}px;
+                    width: ${svgSize}px;
+                    height: ${svgSize}px;
+                    transform: rotate(-90deg);
+                    pointer-events: none;
+                "
+      >
+        <circle
+          stroke="rgba(var(--rgb-primary-text-color), 0.1)"
+          fill="transparent"
+          stroke-width="${strokeWidth}"
+          r="${radius}"
+          cx="${center}"
+          cy="${center}"
+        />
+        <circle
+          stroke="${lightColorStyle}"
+          fill="transparent"
+          stroke-width="${strokeWidth}"
+          stroke-dasharray="${circumference} ${circumference}"
+          style="stroke-dashoffset: ${strokeDashoffset}; transition: stroke-dashoffset 0.25s;"
+          r="${radius}"
+          cx="${center}"
+          cy="${center}"
+        />
+      </svg>
+    `;
+  }
+
+  /* Background/foreground tint for round icon buttons, keyed off the on/off
+     state and the current light colour. */
+  _iconButtonColors(lightColorStyle) {
+    if (!this._isOn()) {
+      return {
+        bg: "rgba(var(--rgb-primary-text-color), 0.05)",
+        fg: "var(--primary-text-color)",
+      };
+    }
+    if (lightColorStyle && lightColorStyle.startsWith("rgb")) {
+      return {
+        bg: lightColorStyle.replace("rgb", "rgba").replace(")", ", 0.15)"),
+        fg: lightColorStyle,
+      };
+    }
+    return {
+      bg: "rgba(var(--rgb-primary-color), 0.15)",
+      fg: lightColorStyle || "var(--primary-color)",
+    };
+  }
+
   /* ---- Volume button ---- */
 
   _renderVolumeButton(change, icon, lightColorStyle) {
-    const isOn = this._isOn();
-    let bg = "rgba(var(--rgb-primary-text-color), 0.05)";
-    let fg = "var(--primary-text-color)";
-    if (isOn) {
-      if (lightColorStyle && lightColorStyle.startsWith("rgb")) {
-        bg = lightColorStyle.replace("rgb", "rgba").replace(")", ", 0.15)");
-        fg = lightColorStyle;
-      } else {
-        bg = "rgba(var(--rgb-primary-color), 0.15)";
-        fg = lightColorStyle || "var(--primary-color)";
-      }
-    }
+    const { bg, fg } = this._iconButtonColors(lightColorStyle);
     return html`
       <button
         class="action-button icon-button"
@@ -2192,11 +2318,31 @@ class NoiseCard extends LitElement {
   }
 
   getCardSize() {
+    // compact ≈ 118 px ≈ 2 masonry rows; strip is a single 56 px row.
+    if (this._config?.variant === "compact") return 2;
+    if (this._config?.variant === "strip") return 1;
     const base = this._config?.layout === "vertical" ? 3 : 1;
     return base + this._countAlwaysVisibleControlRows();
   }
 
   getLayoutOptions() {
+    if (this._config?.variant === "strip") {
+      return {
+        grid_rows: 1,
+        grid_min_rows: 1,
+        grid_columns: 4,
+        grid_min_columns: 4,
+      };
+    }
+    if (this._config?.variant === "compact") {
+      return {
+        grid_rows: 2,
+        grid_min_rows: 2,
+        grid_columns: 1,
+        grid_min_columns: 1,
+      };
+    }
+
     const isVertical = this._config?.layout === "vertical";
     if (this._config?.show_expand_button) {
       return {
@@ -2254,6 +2400,91 @@ class NoiseCard extends LitElement {
       }
       .horizontal-layout.expanded {
         height: auto;
+      }
+      /* ---- Variant: strip — full-width single row (≈56 px tall) ---- */
+      .variant-strip {
+        min-height: 56px;
+      }
+      .variant-strip .strip-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+        min-height: 56px;
+        padding: 0 8px;
+      }
+      .variant-strip .strip-icon {
+        pointer-events: none;
+      }
+      .variant-strip .strip-name {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 20px;
+        color: var(--primary-text-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .variant-strip .strip-timer {
+        flex: 0 0 auto;
+        font-size: 13px;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+        color: var(--secondary-text-color);
+      }
+      /* ---- Variant: compact — ≈118 px tile (⅓-width in a 3-up row) ---- */
+      .variant-compact {
+        min-height: 118px;
+      }
+      .variant-compact .compact-tile {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 6px;
+        box-sizing: border-box;
+        min-height: 118px;
+        padding: 12px 10px 10px;
+        cursor: pointer;
+        text-align: center;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      .variant-compact .compact-tile:focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: -2px;
+      }
+      .variant-compact .shape,
+      .variant-compact .user-photo {
+        width: 40px;
+        height: 40px;
+      }
+      .variant-compact .shape ha-icon {
+        --mdc-icon-size: 24px;
+      }
+      .variant-compact .compact-name {
+        align-self: stretch;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 15px;
+        color: var(--primary-text-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .variant-compact .compact-timer {
+        margin-top: auto;
+        font-size: 11px;
+        font-weight: 500;
+        line-height: 14px;
+        font-variant-numeric: tabular-nums;
+        color: var(--secondary-text-color);
       }
       .content-wrapper {
         position: relative;
@@ -3156,6 +3387,7 @@ class NoiseCardEditor extends LitElement {
       const defaults = {
         background_mode: "full",
         layout: "horizontal",
+        variant: null,
         show_volume_buttons: true,
         show_volume_slider: false,
         show_sound_control: true,
@@ -3530,6 +3762,23 @@ class NoiseCardEditor extends LitElement {
       >
         <mwc-list-item value="horizontal">Horizontal</mwc-list-item>
         <mwc-list-item value="vertical">Vertical</mwc-list-item>
+      </ha-select>
+      <ha-select
+        key="variant"
+        label="Variant"
+        .value="${this._config?.variant || ""}"
+        .options=${[
+          { value: "", label: "Default (full card)" },
+          { value: "strip", label: "Strip (full-width row)" },
+          { value: "compact", label: "Compact (tile)" },
+        ]}
+        @selected="${this._valueChanged}"
+        @change="${this._valueChanged}"
+        @closed="${(e) => e.stopPropagation()}"
+      >
+        <mwc-list-item value="">Default (full card)</mwc-list-item>
+        <mwc-list-item value="strip">Strip (full-width row)</mwc-list-item>
+        <mwc-list-item value="compact">Compact (tile)</mwc-list-item>
       </ha-select>
       ${hasLight
         ? html`
