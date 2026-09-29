@@ -271,6 +271,8 @@ class NoiseCard extends LitElement {
       show_child_lock: false,
       show_timer: false,
       show_expand_button: false,
+      collapsible: false,
+      start_expanded: false,
       show_scenes: false,
       volume_step: 0.05,
       volume_presets: [],
@@ -307,6 +309,15 @@ class NoiseCard extends LitElement {
       variant === "strip" || variant === "compact" ? variant : null;
 
     this._config = this._sanitizeConfig(this._config);
+
+    // `collapsible` renders the card as a compact summary that expands in
+    // place on tap/chevron.  `start_expanded` (default false) opens it
+    // already expanded.  Both default to false so existing configs keep the
+    // classic always-open card.
+    this._config.collapsible = this._config.collapsible === true;
+    this._config.start_expanded = this._config.start_expanded === true;
+    this._showControls =
+      this._config.collapsible && this._config.start_expanded;
   }
 
   static getStubConfig() {
@@ -656,15 +667,38 @@ class NoiseCard extends LitElement {
     );
 
     // Compact / strip variants replace the classic card body entirely. They
-    // show the active sound name instead of the card name and never render
-    // the expanded controls.
+    // show the active sound name instead of the card name.  With
+    // `collapsible` they also gain an inline expandable detail view.
     const variant = this._config.variant;
+    const collapsible = this._config.collapsible === true;
+    const collapsed = collapsible && !this._showControls;
+    // The collapsed summary reports whether the sound is playing; `isOn`
+    // follows the night light when one is configured.
+    const stateLabel = collapsed ? (siren.state === "on" ? "On" : "Off") : "";
+    if (stateLabel && !this._config.secondary_info) {
+      secondaryInfo = `${stateLabel} \u2022 ${secondaryInfo}`;
+    }
+
     if (variant === "strip" || variant === "compact") {
       const soundLabel = tone || name;
+      const showVariantControls = collapsible && this._showControls;
+      const expandedControls = showVariantControls
+        ? this._renderExpandedControls(
+              isOn,
+              lightColor,
+              brightness,
+              volumeLevel,
+              siren,
+              light,
+              hasLight,
+            )
+          : html``;
       return html`
         <ha-card
           style="${cardStyle}"
-          class="variant-${variant} ${isOn ? "is-on" : "is-off"}"
+          class="variant-${variant} ${isOn ? "is-on" : "is-off"} ${collapsible
+            ? "is-collapsible"
+            : ""} ${this._showControls ? "expanded" : ""}"
           @click="${this._handleCardClick}"
         >
           ${variant === "strip"
@@ -674,13 +708,18 @@ class NoiseCard extends LitElement {
                 activeIcon,
                 soundLabel,
                 this._timerRemaining,
+                stateLabel,
               )
             : this._renderCompactVariant(
                 isOn,
                 lightColor,
                 soundLabel,
                 this._timerRemaining,
+                stateLabel,
               )}
+          ${showVariantControls
+            ? html`<div class="variant-expanded">${expandedControls}</div>`
+            : ""}
         </ha-card>
       `;
     }
@@ -690,7 +729,8 @@ class NoiseCard extends LitElement {
     const expandedClass = this._showControls ? "expanded" : "";
 
     const hasExpandable = this._hasExpandableControls();
-    const showExpandButton = this._config.show_expand_button && hasExpandable;
+    const showExpandButton =
+      (this._config.show_expand_button || collapsible) && hasExpandable;
     const showExpandedControls = showExpandButton
       ? this._showControls
       : hasExpandable;
@@ -699,7 +739,9 @@ class NoiseCard extends LitElement {
     return html`
       <ha-card
         style="${cardStyle}"
-        class="${layoutClass} ${expandedClass} ${hasExpandButtonClass}"
+        class="${layoutClass} ${expandedClass} ${hasExpandButtonClass} ${collapsible
+          ? "is-collapsible"
+          : ""}"
         @click="${this._handleCardClick}"
       >
         <div class="grid">
@@ -712,6 +754,7 @@ class NoiseCard extends LitElement {
                 volumePercent,
                 name,
                 showExpandButton,
+                collapsible,
               )
             : this._renderHorizontalLayout(
                 isOn,
@@ -721,6 +764,7 @@ class NoiseCard extends LitElement {
                 volumePercent,
                 name,
                 showExpandButton,
+                collapsible,
               )}
           ${showExpandedControls
             ? this._renderExpandedControls(
@@ -759,7 +803,14 @@ class NoiseCard extends LitElement {
 
   /* ---- Variants (strip / compact) ---- */
 
-  _renderStripVariant(isOn, lightColor, activeIcon, soundLabel, timerLabel) {
+  _renderStripVariant(
+    isOn,
+    lightColor,
+    activeIcon,
+    soundLabel,
+    timerLabel,
+    stateLabel = "",
+  ) {
     const { bg, fg } = this._iconButtonColors(lightColor);
     return html`
       <div class="strip-row" @click="${(e) => e.stopPropagation()}">
@@ -767,6 +818,7 @@ class NoiseCard extends LitElement {
           ${this._renderIconOrPhoto(isOn, lightColor, activeIcon)}
         </div>
         <div class="strip-name">${soundLabel}</div>
+        ${stateLabel ? html`<div class="strip-state">${stateLabel}</div>` : ""}
         ${timerLabel ? html`<div class="strip-timer">${timerLabel}</div>` : ""}
         <button
           class="action-button icon-button strip-power"
@@ -777,11 +829,12 @@ class NoiseCard extends LitElement {
         >
           <ha-icon icon="mdi:power"></ha-icon>
         </button>
+        ${this._renderVariantExpandButton("strip")}
       </div>
     `;
   }
 
-  _renderCompactVariant(isOn, lightColor, soundLabel, timerLabel) {
+  _renderCompactVariant(isOn, lightColor, soundLabel, timerLabel, stateLabel = "") {
     // Fixed icon for both states; state is carried by the shape tint.
     const icon = this._userProvidedIcon || "mdi:white-noise";
     return html`
@@ -801,9 +854,39 @@ class NoiseCard extends LitElement {
       >
         ${this._renderIconOrPhoto(isOn, lightColor, icon, false, 40)}
         <div class="compact-name">${soundLabel}</div>
+        ${stateLabel ? html`<div class="compact-state">${stateLabel}</div>` : ""}
         ${timerLabel
           ? html`<div class="compact-timer">${timerLabel}</div>`
           : ""}
+        ${this._renderVariantExpandButton("compact")}
+      </div>
+    `;
+  }
+
+  /* Chevron used by the strip/compact variants when `collapsible` is set.
+   * The press handlers are stopped so the tile's own tap/hold logic
+   * (which turns the machine on/off) never sees them. */
+  _renderVariantExpandButton(variantName) {
+    if (!this._config.collapsible) return html``;
+    const stop = (e) => e.stopPropagation();
+    return html`
+      <div
+        class="expand-button ${variantName}"
+        role="button"
+        tabindex="0"
+        aria-expanded="${this._showControls ? "true" : "false"}"
+        aria-label="${this._showControls ? "Collapse controls" : "Expand controls"}"
+        @mousedown="${stop}"
+        @mouseup="${stop}"
+        @touchstart="${stop}"
+        @touchend="${stop}"
+        @click="${this._toggleControls}"
+        @keydown="${this._handleExpandKeydown}"
+      >
+        <ha-icon
+          class="expand-icon ${this._showControls ? "expanded" : ""}"
+          icon="mdi:chevron-down"
+        ></ha-icon>
       </div>
     `;
   }
@@ -831,10 +914,14 @@ class NoiseCard extends LitElement {
     volumePercent,
     name,
     showExpandButton,
+    collapsible = false,
   ) {
     return html`
       <div class="content-wrapper">
-        <div class="header">
+        <div
+          class="header ${collapsible ? "collapsible" : ""}"
+          @click="${this._handleSummaryTap}"
+        >
           <div
             class="icon-container"
             @mousedown="${this._handleMouseDown}"
@@ -905,6 +992,7 @@ class NoiseCard extends LitElement {
     volumePercent,
     name,
     showExpandButton,
+    collapsible = false,
   ) {
     return html`
       <div class="content-wrapper vertical">
@@ -937,7 +1025,10 @@ class NoiseCard extends LitElement {
               : ""}
           </div>
         </div>
-        <div class="info vertical">
+        <div
+          class="info vertical ${collapsible ? "collapsible" : ""}"
+          @click="${this._handleSummaryTap}"
+        >
           <div class="name">${name}</div>
           ${secondaryInfo
             ? html`<div class="secondary-info">${secondaryInfo}</div>`
@@ -978,7 +1069,9 @@ class NoiseCard extends LitElement {
     light,
     hasLight,
   ) {
-    const showAlways = !this._config.show_expand_button;
+    const showAlways = !(
+      this._config.show_expand_button || this._config.collapsible
+    );
     const controlsMap = {
       light: {
         is_visible: () =>
@@ -2024,6 +2117,14 @@ class NoiseCard extends LitElement {
     }
   }
 
+  /* Tapping the header/info area of a collapsible card toggles the
+   * expanded detail view instead of running tap_action. */
+  _handleSummaryTap(e) {
+    if (!this._config.collapsible) return;
+    e.stopPropagation();
+    this._toggleControls(e);
+  }
+
   _toggleControls(e) {
     e.stopPropagation();
     this._vibrate();
@@ -2232,6 +2333,18 @@ class NoiseCard extends LitElement {
   /* ---- Card click (volume background) ---- */
 
   _handleCardClick(e) {
+    // Collapsed collapsible card: a tap anywhere outside the interactive
+    // controls opens the detail view.
+    if (this._config.collapsible && !this._showControls) {
+      if (
+        e.target.closest(
+          ".action-button, .icon-container, .expand-button, .expanded-controls, select, input, ha-select",
+        )
+      )
+        return;
+      this._toggleControls(e);
+      return;
+    }
     if (
       this._config.background_mode !== "volume" ||
       !this._config.volume_click_control
@@ -2261,7 +2374,7 @@ class NoiseCard extends LitElement {
   _countAlwaysVisibleControlRows() {
     const c = this._config;
     if (!c) return 0;
-    if (c.show_expand_button) return 0;
+    if (c.show_expand_button || c.collapsible) return 0;
 
     const lightState = c.light_entity
       ? this.hass?.states?.[c.light_entity]
@@ -2316,6 +2429,10 @@ class NoiseCard extends LitElement {
 
   getCardSize() {
     // compact ≈ 118 px ≈ 2 masonry rows; strip is a single 56 px row.
+    if (this._config?.collapsible && this._config?.variant) {
+      const base = this._config.variant === "compact" ? 2 : 1;
+      return base + (this._showControls ? 3 : 0);
+    }
     if (this._config?.variant === "compact") return 2;
     if (this._config?.variant === "strip") return 1;
     const base = this._config?.layout === "vertical" ? 3 : 1;
@@ -2341,7 +2458,7 @@ class NoiseCard extends LitElement {
     }
 
     const isVertical = this._config?.layout === "vertical";
-    if (this._config?.show_expand_button) {
+    if (this._config?.show_expand_button || this._config?.collapsible) {
       return {
         grid_rows: "auto",
         grid_columns: 4,
@@ -2708,6 +2825,38 @@ class NoiseCard extends LitElement {
         position: relative;
         z-index: 1;
         overflow: visible;
+      }
+      /* ---- Collapsible summaries ---- */
+      .header.collapsible,
+      .info.collapsible {
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .strip-state,
+      .compact-state {
+        flex: 0 0 auto;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--secondary-text-color);
+      }
+      .compact-state {
+        align-self: center;
+      }
+      .compact-tile .expand-button {
+        margin-left: 0;
+        margin-top: 2px;
+        align-self: center;
+      }
+      .strip-row .expand-button {
+        margin-left: 0;
+      }
+      .variant-expanded {
+        padding: 0 8px 10px;
+      }
+      .variant-expanded .expanded-controls {
+        padding-top: 8px;
       }
       @keyframes slideDown {
         from {
@@ -3392,6 +3541,8 @@ class NoiseCardEditor extends LitElement {
         show_timer: false,
         show_scenes: false,
         show_expand_button: false,
+        collapsible: false,
+        start_expanded: false,
         show_light_when_off: false,
         show_effects: false,
         show_child_lock: false,
@@ -3857,6 +4008,32 @@ class NoiseCardEditor extends LitElement {
             <span>Show Expand Button</span>
             <div class="switch-description">
               Hide controls behind a toggle button
+            </div>
+          </div></label
+        >
+        <label class="switch-wrapper"
+          ><ha-switch
+            id="collapsible"
+            .checked="${this._config?.collapsible === true}"
+            @change="${this._valueChanged}"
+          ></ha-switch>
+          <div class="switch-label">
+            <span>Collapsible</span>
+            <div class="switch-description">
+              Show a compact summary that expands in place on tap
+            </div>
+          </div></label
+        >
+        <label class="switch-wrapper"
+          ><ha-switch
+            id="start_expanded"
+            .checked="${this._config?.start_expanded === true}"
+            @change="${this._valueChanged}"
+          ></ha-switch>
+          <div class="switch-label">
+            <span>Start Expanded</span>
+            <div class="switch-description">
+              Open a collapsible card already expanded
             </div>
           </div></label
         >
@@ -4651,6 +4828,12 @@ class NoiseCardEditor extends LitElement {
 
 customElements.define("noise-card", NoiseCard);
 
+// Alias: the HACS repository is named `noise-machine-card`, so the card is
+// also registered under that tag so dashboards can use either name.
+if (!customElements.get("noise-machine-card")) {
+  customElements.define("noise-machine-card", class extends NoiseCard {});
+}
+
 const registerEditor = () => {
   const isEditorReady = !!(
     customElements.get("ha-entity-picker") ||
@@ -4716,8 +4899,7 @@ NoiseCard.getConfigElement = function () {
 
 setTimeout(() => {
   window.customCards = window.customCards || [];
-  window.customCards.push({
-    type: "noise-card",
+  const cardInfo = {
     name: "Noise Card",
     preview: true,
     description: "A Lovelace card for Tuya noise machines (siren + light).",
@@ -4729,5 +4911,7 @@ setTimeout(() => {
       if (!/tuya/i.test(platform)) return null;
       return { config: { type: "custom:noise-card", siren_entity: entityId } };
     },
-  });
+  };
+  window.customCards.push({ type: "noise-card", ...cardInfo });
+  window.customCards.push({ type: "noise-machine-card", ...cardInfo });
 }, 0);

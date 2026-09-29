@@ -85,6 +85,8 @@ Forked from [eyalgal/hatch-card](https://github.com/eyalgal/hatch-card).
 | `show_volume_buttons`       | `boolean` | `true`              | Show the volume up/down buttons.                                                     |
 | `show_volume_slider`        | `boolean` | `false`             | Show a volume slider in expanded controls.                                           |
 | `show_expand_button`        | `boolean` | `false`             | Hide expanded controls behind an expand button.                                      |
+| `collapsible`               | `boolean` | `false`             | Render a compact summary that expands in place on tap/chevron. See Collapsible Card. |
+| `start_expanded`            | `boolean` | `false`             | With `collapsible`, open the card already expanded.                                  |
 | `show_sound_control`        | `boolean` | `true`              | Show the sound picker (button row + dropdown).                                       |
 | `show_light_control`        | `boolean` | `false`             | Show the light control row — brightness slider + colour swatches (requires light).   |
 | `show_light_when_off`       | `boolean` | `false`             | Show the light control row even when the light is off.                               |
@@ -353,8 +355,9 @@ secondary_info: "{sound}"
 
 Beside the classic full card (`variant` omitted) the card ships two small layouts for hero rows
 and status strips. Both show the **active sound name** (`siren` `tone` attribute, falling back to
-the card name) and the remaining sleep-timer time. Neither renders the expanded controls, the
-background mode or the volume buttons — use the full card for those.
+the card name) and the remaining sleep-timer time. Neither renders the background mode or the
+volume buttons, and the expanded controls only appear when `collapsible: true` (see Collapsible
+Card below) — use the full card otherwise.
 
 | Variant             | Size                                | Contents                                            |
 | :------------------ | :---------------------------------- | :-------------------------------------------------- |
@@ -408,6 +411,47 @@ cards:
 In a sections view the grid is four columns wide, so a `compact` card placed directly in a
 section requests one column (a quarter of the section) and can be resized with the card's
 resize handle; a `strip` card requests the full section width.
+
+---
+
+## Collapsible Card
+
+`collapsible: true` renders the card as a compact summary that expands **in place** — no pop-up
+or extra card needed. The summary keeps showing the live state (on/off, active sound, volume,
+remaining sleep-timer time); tapping the summary area or the chevron swaps in the full detail
+view (light, volume slider, sound picker, timer presets) and tapping again collapses it.
+
+Every layout supports it:
+
+- Classic `horizontal` / `vertical` — the header line is the tap target, and the chevron appears
+  in the action row. While collapsed, a tap anywhere outside the buttons also expands the card.
+- `variant: strip` / `variant: compact` — a chevron is added to the strip/tile; the tile keeps its
+  own tap/hold behaviour, and the detail view expands below it.
+
+The collapsed summary is the card's normal secondary line prefixed with `On`/`Off`; set
+`secondary_info` to override it with your own template (`{sound}`, `{volume}`, `{brightness}`).
+
+```yaml
+type: custom:noise-card
+siren_entity: siren.sleep_noise_machine_sound
+light_entity: light.sleep_noise_machine
+timer_entity: timer.noise_machine_sleep_timer
+name: Noise machine
+icon: mdi:sleep
+collapsible: true            # collapsed by default, tap to expand
+show_volume_buttons: false   # keep the summary line clean
+show_volume_slider: true     # volume lives in the expanded view
+show_sound_control: true
+show_timer: true
+show_light_control: true
+show_light_when_off: true
+```
+
+Add `start_expanded: true` to open the card expanded but still collapsible. Both options default
+to `false`, so existing dashboards are unaffected.
+
+The card is registered under both tags — `custom:noise-card` and `custom:noise-machine-card`
+(the HACS repository name). They are the same class; use whichever you prefer.
 
 ---
 
